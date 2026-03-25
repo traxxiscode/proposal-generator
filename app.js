@@ -3,6 +3,7 @@
 // ============================================================
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBNEgyzigOZG9yyLUt5bPJajSAGivbdtyg",
@@ -15,6 +16,13 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Sign in anonymously so Firestore rules (auth != null) are satisfied.
+// This runs once at startup before any Firestore reads/writes.
+signInAnonymously(auth).catch(function(e) {
+  console.error('[Firebase Auth] Anonymous sign-in failed:', e.code, e.message);
+});
 
 // Firestore document paths
 const COLLECTION = 'proposal_generator';
