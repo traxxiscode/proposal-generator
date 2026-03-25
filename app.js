@@ -154,6 +154,8 @@ async function initAuth() {
   document.getElementById('auth-loading-panel').style.display = 'none';
   if (!hasAdmin) {
     document.getElementById('auth-setup-panel').style.display = 'block';
+  } else if (sessionStorage.getItem('proposalGeneratorAdmin') === 'true') {
+    bootAsAdmin();
   } else {
     document.getElementById('auth-login-panel').style.display = 'block';
   }
@@ -199,6 +201,7 @@ window.continueAsGuest = function() {
 
 async function bootAsAdmin() {
   isAdmin = true;
+  sessionStorage.setItem('proposalGeneratorAdmin', 'true');
   await loadData(true);
   renderPlanGrid(); updateTotals();
   hideAuthOverlay();
@@ -207,6 +210,7 @@ async function bootAsAdmin() {
 
 async function bootAsGuest() {
   isAdmin = false;
+  sessionStorage.removeItem('proposalGeneratorAdmin');
   await loadData(false);
   renderPlanGrid(); updateTotals();
   hideAuthOverlay();
@@ -237,6 +241,7 @@ function updateAdminUI() {
 
 window.handleAdminSignOut = function() {
   isAdmin = false;
+  sessionStorage.removeItem('proposalGeneratorAdmin');
   updateAdminUI();
   showPage('quote');
   toast('Signed out of admin mode');
@@ -256,6 +261,7 @@ window.handleModalAdminLogin = async function() {
   var ok = await verifyAdminKey(key);
   if (ok) {
     isAdmin = true;
+    sessionStorage.setItem('proposalGeneratorAdmin', 'true');
     closeModal('modal-admin-login');
     await loadData(true);
     updateAdminUI();

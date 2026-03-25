@@ -122,8 +122,7 @@ input.qty-input{width:60px;text-align:center;padding:5px 6px;}
 .quote-action-bar{display:block;padding:22px 22px 18px;}
 .quote-actions-blurb{font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.5;}
 .quote-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.quote-action-grid .btn{justify-content:center;width:100%;}
-.quote-action-grid .btn:first-child{grid-column:span 2;}
+.quote-action-grid .btn{justify-content:center;width:100%;min-height:48px;padding:12px 14px;font-size:14px;}
 .totals-box{min-width:0;}
 .section-header{display:flex;align-items:center;justify-content:space-between;}
 .empty-state{text-align:center;padding:44px;color:var(--muted);}
