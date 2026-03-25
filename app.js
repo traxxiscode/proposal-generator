@@ -69,15 +69,27 @@ async function hashKey(key, salt) {
 // ============================================================
 async function checkAdminSetup() {
   try {
+    console.log('[checkAdminSetup] Checking doc:', COLLECTION + '/' + ADMIN_DOC);
     var snap = await getDoc(doc(db, COLLECTION, ADMIN_DOC));
+    console.log('[checkAdminSetup] Doc exists:', snap.exists());
     return snap.exists();
-  } catch(e) { return false; }
+  } catch(e) {
+    console.error('[checkAdminSetup] ERROR reading admin doc:', e);
+    console.error('[checkAdminSetup] Error code:', e.code, '| message:', e.message);
+    return false;
+  }
 }
 
 async function createAdminKey(key) {
+  console.log('[createAdminKey] Starting. COLLECTION:', COLLECTION, '| ADMIN_DOC:', ADMIN_DOC);
   var salt = await generateSalt();
+  console.log('[createAdminKey] Salt generated OK');
   var hash = await hashKey(key, salt);
-  await setDoc(doc(db, COLLECTION, ADMIN_DOC), { hash: hash, salt: salt });
+  console.log('[createAdminKey] Hash generated OK (first 8):', hash.slice(0, 8));
+  var docRef = doc(db, COLLECTION, ADMIN_DOC);
+  console.log('[createAdminKey] Doc path:', docRef.path, '| Attempting setDoc...');
+  await setDoc(docRef, { hash: hash, salt: salt });
+  console.log('[createAdminKey] setDoc SUCCESS');
 }
 
 async function verifyAdminKey(key) {
@@ -112,9 +124,14 @@ window.handleSetupKey = async function() {
   if (key.length < 6) { err.textContent = 'Admin key must be at least 6 characters.'; err.style.display = 'block'; return; }
   if (key !== key2) { err.textContent = 'Keys do not match.'; err.style.display = 'block'; return; }
   try {
+    console.log('[handleSetupKey] Calling createAdminKey...');
     await createAdminKey(key);
+    console.log('[handleSetupKey] createAdminKey resolved, booting as admin...');
     bootAsAdmin();
   } catch(e) {
+    console.error('[handleSetupKey] CAUGHT ERROR:', e);
+    console.error('[handleSetupKey] Error code:', e.code);
+    console.error('[handleSetupKey] Error message:', e.message);
     err.textContent = 'Error saving admin key. Check connection.'; err.style.display = 'block';
   }
 };
