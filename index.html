@@ -274,34 +274,23 @@
               <button class="btn btn-danger btn-sm" onclick="clearAllProposals()">Clear All</button>
             </div>
           </div>
+          <div class="admin-search-wrap">
+            <input type="text" id="history-search" class="admin-search-input" placeholder="Search saved proposals and agreements..." oninput="renderHistory()">
+          </div>
           <div id="history-empty" class="empty-state">
             <div class="empty-icon">📁</div>
             <div style="font-weight:600;margin-bottom:4px">No saved documents yet</div>
             <div style="font-size:12px">Proposals and agreements will appear here after generation</div>
           </div>
-          <div id="history-tables" style="display:none">
-            <div class="history-section">
-              <div class="history-section-title">
-                <h3>Saved Proposals</h3>
-                <span id="history-proposals-count">0 records</span>
-              </div>
-              <div id="history-proposals-empty" class="history-empty-mini" style="display:none">No saved proposals yet.</div>
-              <table class="admin-table" id="history-proposals-table" style="display:none">
-                <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Actions</th></tr></thead>
-                <tbody id="history-proposals-tbody"></tbody>
-              </table>
+          <div id="history-table-wrap" style="display:none">
+            <div class="history-section-title">
+              <h3>Saved Proposals &amp; Agreements</h3>
+              <span id="history-count">0 records</span>
             </div>
-            <div class="history-section">
-              <div class="history-section-title">
-                <h3>Saved Agreements</h3>
-                <span id="history-agreements-count">0 records</span>
-              </div>
-              <div id="history-agreements-empty" class="history-empty-mini" style="display:none">No saved agreements yet.</div>
-              <table class="admin-table" id="history-agreements-table" style="display:none">
-                <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Actions</th></tr></thead>
-                <tbody id="history-agreements-tbody"></tbody>
-              </table>
-            </div>
+            <table class="admin-table" id="history-table" style="display:none">
+              <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Document</th><th>Total Due</th><th>Monthly</th><th>Actions</th></tr></thead>
+              <tbody id="history-tbody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -323,6 +312,9 @@
             <div class="card-title"><div class="card-title-bar"></div>Equipment Catalog</div>
             <button class="btn btn-primary btn-sm" onclick="openNewProduct()">+ Add Product</button>
           </div>
+          <div class="admin-search-wrap">
+            <input type="text" id="catalog-search" class="admin-search-input" placeholder="Search equipment catalog..." oninput="renderAdmin()">
+          </div>
           <table class="admin-table">
             <thead><tr><th>SKU</th><th>Description</th><th>Category</th><th>Unit Price</th><th>3-Yr Price</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="catalog-tbody"></tbody>
@@ -332,6 +324,9 @@
           <div class="card-header">
             <div class="card-title"><div class="card-title-bar"></div>Monthly Plans Catalog</div>
             <button class="btn btn-primary btn-sm" onclick="openNewPlan()">+ Add Plan</button>
+          </div>
+          <div class="admin-search-wrap">
+            <input type="text" id="plans-search" class="admin-search-input" placeholder="Search monthly plans..." oninput="renderAdmin()">
           </div>
           <table class="admin-table">
             <thead><tr><th>Plan Name</th><th>Description</th><th>Monthly Rate</th><th>Actions</th></tr></thead>

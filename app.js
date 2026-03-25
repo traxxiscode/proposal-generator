@@ -397,56 +397,50 @@ function saveProposalRecord(docType) {
 
 function renderHistory() {
   if (!isAdmin) return;
-  var proposalsTbody = document.getElementById('history-proposals-tbody');
-  var agreementsTbody = document.getElementById('history-agreements-tbody');
-  var proposalsTable = document.getElementById('history-proposals-table');
-  var agreementsTable = document.getElementById('history-agreements-table');
-  var tablesWrap = document.getElementById('history-tables');
+  var tbody = document.getElementById('history-tbody');
+  var table = document.getElementById('history-table');
+  var tableWrap = document.getElementById('history-table-wrap');
   var empty = document.getElementById('history-empty');
-  if (!proposalsTbody || !agreementsTbody) return;
-  if (proposalHistory.length === 0) {
-    tablesWrap.style.display = 'none';
+  if (!tbody || !table || !tableWrap) return;
+  var search = (document.getElementById('history-search').value || '').toLowerCase().trim();
+  var filtered = proposalHistory.filter(function(p) {
+    if (!search) return true;
+    return [
+      p.company, p.contact, p.docType, p.orderLabel, p.email, p.phone, p.rep, p.date
+    ].join(' ').toLowerCase().indexOf(search) >= 0;
+  });
+  if (filtered.length === 0) {
+    tableWrap.style.display = 'none';
     empty.style.display = 'block';
     return;
   }
-  tablesWrap.style.display = 'block';
+  tableWrap.style.display = 'block';
   empty.style.display = 'none';
-
-  var proposals = proposalHistory.filter(function(p){ return p.docType === 'Proposal'; });
-  var agreements = proposalHistory.filter(function(p){ return p.docType === 'Agreement'; });
-
-  function buildRows(items, docType) {
-    var html = '';
-    for (var i = 0; i < items.length; i++) {
-      var p = items[i];
-      var age = Math.floor((Date.now() - p.timestamp) / (24*60*60*1000));
-      var dotClass = age < 30 ? 'green' : (age < 60 ? 'blue' : 'orange');
-      html += '<tr>';
-      html += '<td><span class="status-dot '+dotClass+'"></span>'+p.date+'<br><span style="font-size:10px;color:var(--muted)">'+age+'d ago</span></td>';
-      html += '<td style="font-weight:600">'+p.company+'</td>';
-      html += '<td>'+p.contact+'</td>';
-      html += '<td><span class="badge badge-blue">'+p.orderLabel+'</span></td>';
-      html += '<td class="price-cell">'+fmt(p.total)+'</td>';
-      html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
-      html += '<td><div class="history-actions">';
-      html += '<button class="btn btn-download btn-sm" onclick="'+(docType === 'Proposal' ? 'downloadSavedProposal' : 'downloadSavedAgreement')+'('+p.id+')">Download PDF</button>';
-      html += '<button class="btn btn-outline btn-sm" onclick="editSavedRecord('+p.id+')">Edit</button>';
-      html += '<button class="btn btn-outline btn-sm" onclick="previewSavedRecord('+p.id+')">Preview</button>';
-      html += '<button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">Delete</button>';
-      html += '</div></td>';
-      html += '</tr>';
-    }
-    return html;
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    var p = filtered[i];
+    var age = Math.floor((Date.now() - p.timestamp) / (24*60*60*1000));
+    var dotClass = age < 30 ? 'green' : (age < 60 ? 'blue' : 'orange');
+    var docBadge = p.docType === 'Proposal' ? 'badge-blue' : 'badge-orange';
+    html += '<tr>';
+    html += '<td><span class="status-dot '+dotClass+'"></span>'+p.date+'<br><span style="font-size:10px;color:var(--muted)">'+age+'d ago</span></td>';
+    html += '<td style="font-weight:600">'+p.company+'</td>';
+    html += '<td>'+p.contact+'</td>';
+    html += '<td><span class="badge '+docBadge+'">'+p.docType+'</span></td>';
+    html += '<td class="price-cell">'+fmt(p.total)+'</td>';
+    html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
+    html += '<td><div class="history-actions">';
+    html += '<button class="btn btn-download btn-sm" onclick="downloadSavedProposal('+p.id+')">Download Proposal PDF</button>';
+    html += '<button class="btn btn-download btn-sm" onclick="downloadSavedAgreement('+p.id+')">Download Agreement PDF</button>';
+    html += '<button class="btn btn-outline btn-sm" onclick="editSavedRecord('+p.id+')">Edit</button>';
+    html += '<button class="btn btn-outline btn-sm" onclick="previewSavedRecord('+p.id+')">Preview</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">Delete</button>';
+    html += '</div></td>';
+    html += '</tr>';
   }
-
-  document.getElementById('history-proposals-count').textContent = proposals.length + (proposals.length === 1 ? ' record' : ' records');
-  document.getElementById('history-agreements-count').textContent = agreements.length + (agreements.length === 1 ? ' record' : ' records');
-  proposalsTable.style.display = proposals.length ? 'table' : 'none';
-  agreementsTable.style.display = agreements.length ? 'table' : 'none';
-  document.getElementById('history-proposals-empty').style.display = proposals.length ? 'none' : 'block';
-  document.getElementById('history-agreements-empty').style.display = agreements.length ? 'none' : 'block';
-  proposalsTbody.innerHTML = buildRows(proposals, 'Proposal');
-  agreementsTbody.innerHTML = buildRows(agreements, 'Agreement');
+  document.getElementById('history-count').textContent = filtered.length + (filtered.length === 1 ? ' record' : ' records');
+  table.style.display = 'table';
+  tbody.innerHTML = html;
 }
 
 function findSavedRecord(id) {
@@ -768,9 +762,12 @@ window.removeEquip = function(i) { selectedEquipment.splice(i, 1); renderEquipme
 // ============================================================
 function renderAdmin() {
   if (!isAdmin) return;
+  var catalogSearch = (document.getElementById('catalog-search').value || '').toLowerCase().trim();
+  var plansSearch = (document.getElementById('plans-search').value || '').toLowerCase().trim();
   var tb = document.getElementById('catalog-tbody'), html = '';
   for (var i = 0; i < catalog.length; i++) {
     var p = catalog[i];
+    if (catalogSearch && [p.sku, p.desc, p.category, p.active ? 'active' : 'hidden'].join(' ').toLowerCase().indexOf(catalogSearch) === -1) continue;
     html += '<tr><td><span class="badge badge-blue">' + p.sku + '</span></td><td>' + p.desc + '</td>';
     html += '<td><span class="badge badge-orange">' + p.category + '</span></td>';
     html += '<td class="price-cell">' + fmt(p.price) + '</td><td class="price-cell">' + fmt(p.price3yr) + '</td>';
@@ -781,6 +778,7 @@ function renderAdmin() {
   var pt = document.getElementById('plans-catalog-tbody'), ph = '';
   for (var j = 0; j < plans.length; j++) {
     var pl = plans[j];
+    if (plansSearch && [pl.name, pl.desc, String(pl.rate)].join(' ').toLowerCase().indexOf(plansSearch) === -1) continue;
     ph += '<tr><td style="font-weight:600">' + pl.name + '</td><td style="color:var(--muted)">' + pl.desc + '</td>';
     ph += '<td class="price-cell">' + fmt(pl.rate) + '/mo</td>';
     ph += '<td><button class="btn btn-outline btn-sm" onclick="editPlan(' + pl.id + ')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deletePlan(' + pl.id + ')">Delete</button></td></tr>';
@@ -1051,6 +1049,22 @@ function addPdfInfoGrid(doc, startY, leftItems, rightItems, layout) {
   }
   return y;
 }
+function addPdfCustomerTable(doc, startY, rows, width, margin) {
+  doc.autoTable({
+    startY: startY,
+    margin: {left: margin, right: margin},
+    body: rows,
+    theme: 'grid',
+    styles: {fontSize:8.8, textColor:C.text, cellPadding:{top:7,bottom:7,left:8,right:8}, lineColor:[220,228,240], lineWidth:0.5, overflow:'linebreak', valign:'middle'},
+    columnStyles: {
+      0: {cellWidth: 92, fontStyle:'bold', textColor:C.muted, fillColor:[248,250,253]},
+      1: {cellWidth: width, textColor:C.text},
+      2: {cellWidth: 92, fontStyle:'bold', textColor:C.muted, fillColor:[248,250,253]},
+      3: {cellWidth: width, textColor:C.text}
+    }
+  });
+  return doc.lastAutoTable.finalY + 12;
+}
 function addPdfSummaryCard(doc, d, opts) {
   var x = opts.x, y = opts.y, w = opts.w;
   setFill(doc, [246, 249, 253]); doc.roundedRect(x, y, w, 126, 8, 8, 'F');
@@ -1088,7 +1102,7 @@ async function generateProposalFromData(d) {
     subtitle: d.orderLabel,
     rightLines: [today, '888.447.7059', 'www.traxxisgps.com']
   });
-  var y = 118;
+  var y = 132;
   function secHdr(text, accent) {
     y = checkPageBreak(doc, y, 40, H, M);
     accent = accent || C.orange;
@@ -1099,19 +1113,12 @@ async function generateProposalFromData(d) {
     y += 22;
   }
   secHdr('CUSTOMER INFORMATION');
-  y = addPdfInfoGrid(doc, y, [
-    {label:'COMPANY / BILL TO', value:d.company},
-    {label:'ADDRESS', value:d.address},
-    {label:'TELEPHONE', value:d.phone}
-  ], [
-    {label:'ATTENTION', value:d.contact + (d.title ? ', ' + d.title : '')},
-    {label:'CITY, STATE, ZIP', value:[d.city,d.state,d.zip].filter(Boolean).join(', ')},
-    {label:'EMAIL', value:d.email}
-  ], {
-    leftX: M + 4,
-    rightX: W / 2 + 12,
-    colWidth: W / 2 - M - 20
-  }) + 2;
+  y = addPdfCustomerTable(doc, y, [
+    ['COMPANY / BILL TO', d.company || '-', 'ATTENTION', (d.contact || '-') + (d.title ? ', ' + d.title : '')],
+    ['ADDRESS', d.address || '-', 'CITY, STATE, ZIP', [d.city,d.state,d.zip].filter(Boolean).join(', ') || '-'],
+    ['TELEPHONE', d.phone || '-', 'EMAIL', d.email || '-'],
+    ['WEBSITE', d.website || '-', 'TRAXXIS REP', d.rep || '-']
+  ], 163, M);
   if (d.challenge) {
     doc.setFont('helvetica','bold'); doc.setFontSize(6.5); setTxt(doc, C.muted);
     doc.text('CUSTOMER CHALLENGE / NEED', M + 4, y);
@@ -1202,7 +1209,7 @@ async function generateAgreementFromData(d) {
     subtitle: d.orderLabel,
     rightLines: [today, '888.447.7059', 'www.traxxisgps.com']
   });
-  var y = 116;
+  var y = 132;
   function aSecHdr(text, accentColor) {
     y = checkPageBreak(doc, y, 38, H, M);
     accentColor = accentColor || C.orange;
@@ -1213,23 +1220,13 @@ async function generateAgreementFromData(d) {
     y += 19;
   }
   aSecHdr('CUSTOMER DETAILS');
-  y = addPdfInfoGrid(doc, y, [
-    {label:'ORDER DATE', value:today},
-    {label:'BILL TO', value:d.company},
-    {label:'ATTENTION', value:d.contact},
-    {label:'ADDRESS', value:d.address},
-    {label:'TELEPHONE', value:d.phone}
-  ], [
-    {label:'TYPE', value:({new:'NEW',addon:'ADD-ON',renewal:'RENEWAL'})[d.orderType]||'NEW'},
-    {label:'SHIP TO', value:d.company},
-    {label:'TITLE', value:d.title},
-    {label:'CITY, STATE, ZIP', value:[d.city,d.state,d.zip].filter(Boolean).join(', ')},
-    {label:'EMAIL', value:d.email}
-  ], {
-    leftX: M + 4,
-    rightX: W / 2 + 10,
-    colWidth: W / 2 - M - 18
-  });
+  y = addPdfCustomerTable(doc, y, [
+    ['ORDER DATE', today, 'TYPE', ({new:'NEW',addon:'ADD-ON',renewal:'RENEWAL'})[d.orderType]||'NEW'],
+    ['BILL TO', d.company || '-', 'SHIP TO', d.company || '-'],
+    ['ATTENTION', d.contact || '-', 'TITLE', d.title || '-'],
+    ['ADDRESS', d.address || '-', 'CITY, STATE, ZIP', [d.city,d.state,d.zip].filter(Boolean).join(', ') || '-'],
+    ['TELEPHONE', d.phone || '-', 'EMAIL', d.email || '-']
+  ], 160, M);
   setStroke(doc, [218,228,245]); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 7;
   aSecHdr('EQUIPMENT DETAILS');
   doc.setFont('helvetica','normal'); doc.setFontSize(7); setTxt(doc, [110,128,155]);
