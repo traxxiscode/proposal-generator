@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Traxxis GPS — Quote & Proposal Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Barlow+Condensed:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============================================================
+     FIREBASE AUTH OVERLAY — shown until user is signed in
+     ============================================================ -->
+<div id="auth-overlay" class="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <svg viewBox="0 0 220 58" xmlns="http://www.w3.org/2000/svg" style="max-width:200px;height:auto;">
+        <defs>
+          <linearGradient id="logoGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#1CB4E8"/>
+            <stop offset="100%" style="stop-color:#0A7BAF"/>
+          </linearGradient>
+        </defs>
+        <circle cx="18" cy="29" r="6" fill="none" stroke="#E8601C" stroke-width="2.5"/>
+        <circle cx="18" cy="29" r="2" fill="#E8601C"/>
+        <path d="M18 17 L18 12" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M18 41 L18 46" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M6 29 L1 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M30 29 L35 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <text x="44" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="#1a1f2e" letter-spacing="3">TRAXXIS</text>
+        <text x="184" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="#E8601C" letter-spacing="2">GPS</text>
+        <text x="44" y="48" font-family="'Barlow',sans-serif" font-weight="400" font-size="9" fill="rgba(0,0,0,0.35)" letter-spacing="3.5">FLEET TRACKING SOLUTIONS</text>
+      </svg>
+    </div>
+    <div class="auth-title" id="auth-title">Sign In</div>
+    <div class="auth-sub">Quote &amp; Proposal Generator — Team Access</div>
+    <div class="auth-error" id="auth-error"></div>
+
+    <!-- Login Form -->
+    <div id="auth-login-form" class="auth-form">
+      <div class="form-group"><label>Email Address</label><input type="email" id="login-email" placeholder="you@traxxisgps.com" autocomplete="email"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="login-password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleLogin()"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="handleLogin()">Sign In</button>
+      <div class="auth-switch">Don't have an account? <a onclick="switchToRegister()">Create one</a></div>
+    </div>
+
+    <!-- Register Form -->
+    <div id="auth-register-form" class="auth-form" style="display:none">
+      <div class="form-group"><label>Email Address</label><input type="email" id="reg-email" placeholder="you@traxxisgps.com" autocomplete="email"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password"></div>
+      <div class="form-group"><label>Confirm Password</label><input type="password" id="reg-password2" placeholder="Repeat password" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleRegister()"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="handleRegister()">Create Account</button>
+      <div class="auth-switch">Already have an account? <a onclick="switchToLogin()">Sign in</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP SHELL
+     ============================================================ -->
+<div class="app-shell" id="app-shell" style="display:none">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg viewBox="0 0 220 58" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#1CB4E8"/>
+            <stop offset="100%" style="stop-color:#0A7BAF"/>
+          </linearGradient>
+        </defs>
+        <circle cx="18" cy="29" r="6" fill="none" stroke="#E8601C" stroke-width="2.5"/>
+        <circle cx="18" cy="29" r="2" fill="#E8601C"/>
+        <path d="M18 17 L18 12" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M18 41 L18 46" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M6 29 L1 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <path d="M30 29 L35 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
+        <text x="44" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="white" letter-spacing="3">TRAXXIS</text>
+        <text x="184" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="#E8601C" letter-spacing="2">GPS</text>
+        <text x="44" y="48" font-family="'Barlow',sans-serif" font-weight="400" font-size="9" fill="rgba(255,255,255,0.4)" letter-spacing="3.5">FLEET TRACKING SOLUTIONS</text>
+      </svg>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Quoting</div>
+      <div class="nav-item active" onclick="showPage('quote')" data-page="quote"><span class="nav-icon">📋</span>New Quote / Proposal</div>
+      <div class="nav-item" onclick="showPage('history')" data-page="history"><span class="nav-icon">📁</span>Saved Proposals</div>
+      <div class="nav-section">Settings</div>
+      <div class="nav-item" onclick="showPage('admin')" data-page="admin"><span class="nav-icon">⚙️</span>Product Catalog</div>
+    </nav>
+    <div class="sidebar-footer">Traxxis GPS Solutions, Inc.<br>Quote Generator v3.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-icon">📋</div>
+        <div><div class="topbar-title">Traxxis GPS Quote Generator</div><div class="topbar-sub">Build proposals &amp; agreements for customers</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">
+        <span id="storage-status" style="display:inline-flex;align-items:center;gap:5px">
+          <span class="status-dot orange"></span> Connecting…
+        </span>
+      </div>
+    </div>
+
+    <!-- ===== QUOTE PAGE ===== -->
+    <div class="page active" id="page-quote">
+
+      <!-- ORDER TYPE -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Order Type</div>
+        </div>
+        <div class="order-type-grid">
+          <div class="ot-card selected" id="ot-new" onclick="selectOrderType('new',this,'selected')">
+            <span class="ot-icon">🆕</span>
+            <div class="ot-label">New</div><div class="ot-sub">New customer account</div>
+          </div>
+          <div class="ot-card" id="ot-addon" onclick="selectOrderType('addon',this,'selected-green')">
+            <span class="ot-icon">➕</span>
+            <div class="ot-label">Add-On</div><div class="ot-sub">Existing customer, adding units</div>
+          </div>
+          <div class="ot-card" id="ot-renewal" onclick="selectOrderType('renewal',this,'selected-orange')">
+            <span class="ot-icon">🔄</span>
+            <div class="ot-label">Renewal</div><div class="ot-sub">Contract renewal / upgrade</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CUSTOMER DETAILS -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Customer Details</div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group"><label>Company Name *</label><input type="text" id="q-company" placeholder="Acme Logistics Inc."></div>
+          <div class="form-group"><label>Primary Contact *</label><input type="text" id="q-contact" placeholder="John Smith"></div>
+          <div class="form-group"><label>Title / Position</label><input type="text" id="q-title" placeholder="Fleet Manager"></div>
+          <div class="form-group"><label>Email Address</label><input type="email" id="q-email" placeholder="jsmith@acme.com"></div>
+          <div class="form-group"><label>Billing Address</label><input type="text" id="q-address" placeholder="123 Main St"></div>
+          <div class="form-group"><label>City</label><input type="text" id="q-city" placeholder="Charlotte"></div>
+          <div class="form-group"><label>State</label><input type="text" id="q-state" placeholder="NC" oninput="updateTotals()"></div>
+          <div class="form-group"><label>ZIP Code</label><input type="text" id="q-zip" placeholder="28201"></div>
+          <div class="form-group"><label>Telephone</label><input type="text" id="q-phone" placeholder="(704) 555-0100"></div>
+          <div class="form-group"><label>Website</label><input type="text" id="q-website" placeholder="www.acme.com"></div>
+          <div class="form-group col-span-2"><label>Customer Challenge / Need</label><textarea id="q-challenge" rows="3" placeholder="Describe the customer's fleet management challenge or primary need..."></textarea></div>
+        </div>
+      </div>
+
+      <!-- EQUIPMENT -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Equipment Selection</div>
+          <button class="btn btn-primary btn-sm" onclick="openAddProduct()">+ Add Product</button>
+        </div>
+        <div id="equipment-empty" class="empty-state">
+          <div class="empty-icon">📦</div>
+          <div style="font-weight:600;margin-bottom:4px">No equipment added yet</div>
+          <div style="font-size:12px">Click "Add Product" to select from the catalog</div>
+        </div>
+        <table class="product-table" id="equipment-table" style="display:none">
+          <thead><tr><th>Qty</th><th>Description</th><th>Unit Price</th><th>Ext. Price</th><th></th></tr></thead>
+          <tbody id="equipment-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- MONTHLY PLANS -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Monthly Access Plans</div>
+        </div>
+        <div class="plan-grid" id="plan-grid"></div>
+        <div id="selected-plans-area" style="margin-top:18px;display:none">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.8px">Selected Plans</div>
+          <table class="product-table">
+            <thead><tr><th>Qty</th><th>Plan</th><th>Monthly Rate</th><th>Total/Mo</th><th></th></tr></thead>
+            <tbody id="plans-tbody"></tbody>
+          </table>
+          <div id="min-monthly-badge" class="min-badge" style="display:none">
+            ⚠️ <span id="min-monthly-text">Safety Platform Fee applied</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTRACT & BILLING -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Contract Term &amp; Billing</div>
+        </div>
+        <div class="contract-grid" style="margin-bottom:20px">
+          <div class="contract-option" id="contract-mtm" onclick="selectContract('mtm',this)">
+            <div class="contract-label">Month-to-Month</div><div class="contract-sub">No commitment</div>
+          </div>
+          <div class="contract-option selected" id="contract-24" onclick="selectContract('24',this)">
+            <div class="contract-label">24 Months</div><div class="contract-sub">2-Year Agreement</div>
+          </div>
+          <div class="contract-option" id="contract-36" onclick="selectContract('36',this)">
+            <div class="contract-label">36 Months</div><div class="contract-sub">★ Best Value</div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group"><label>Payment Terms</label>
+            <select id="q-payment-terms">
+              <option>100% Payment Due Up-Front</option>
+              <option>Net 30</option>
+              <option>Finance / Lease</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Traxxis GPS Rep</label><input type="text" id="q-rep" placeholder="Rep full name"></div>
+          <div class="form-group"><label>Metro / Region</label><input type="text" id="q-metro" placeholder="e.g. Charlotte Metro, NC" oninput="updateTotals()"></div>
+          <div class="form-group"><label>Notes / Agreement Details</label><textarea id="q-notes" rows="2" placeholder="Additional terms, special pricing notes..."></textarea></div>
+        </div>
+      </div>
+
+      <!-- MAIN LAYOUT: ACTIONS + TOTALS SIDEBAR -->
+      <div class="quote-layout">
+        <div class="quote-main">
+          <div class="action-bar">
+            <div style="font-size:13px;color:var(--muted)">Generate customer-ready documents below</div>
+            <div class="btn-group">
+              <button class="btn btn-outline" onclick="previewQuote()">👁 Preview</button>
+              <button class="btn btn-primary" onclick="generateProposal()">📄 Proposal PDF</button>
+              <button class="btn btn-orange btn-lg" onclick="generateAgreement()">✍️ Generate Agreement</button>
+            </div>
+          </div>
+        </div>
+        <div class="quote-sidebar">
+          <div class="totals-box">
+            <div class="totals-title">Quote Summary</div>
+            <div class="totals-row">
+              <span class="totals-label">Equipment Subtotal</span>
+              <span id="t-equip" style="font-weight:600">$0.00</span>
+            </div>
+            <div class="totals-row" id="tax-row">
+              <span class="totals-label">Tax <span id="tax-state-lbl" style="font-size:11px;opacity:0.55"></span></span>
+              <div class="tax-row-inner">
+                <input type="number" class="tax-pct-input" id="tax-rate-input" value="0" min="0" max="30" step="0.001" oninput="updateTotals()" placeholder="0">
+                <span class="tax-pct-label">%</span>
+                <span id="t-tax" style="font-weight:600;min-width:62px;text-align:right">$0.00</span>
+              </div>
+            </div>
+            <div class="totals-row">
+              <span class="totals-label">Access Plan Deposit (2 mo.)</span>
+              <span id="t-deposit" style="font-weight:600">$0.00</span>
+            </div>
+            <div class="totals-row divider total-big">
+              <span>Total Due</span><span id="t-total">$0.00</span>
+            </div>
+            <div class="totals-row monthly">
+              <span class="totals-label" style="color:rgba(255,255,255,0.65)">Monthly Total</span>
+              <span id="t-monthly">$0.00/mo</span>
+            </div>
+            <div class="totals-meta">
+              <div class="totals-meta-line" id="t-contract-term">Contract: 24 Months</div>
+              <div class="totals-meta-line" id="t-order-type-line">Order Type: New</div>
+              <div id="t-min-note" class="totals-meta-line" style="color:rgba(249,115,22,0.6)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PROPOSALS HISTORY PAGE ===== -->
+    <div class="page" id="page-history">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Saved Proposals &amp; Agreements</div>
+          <div class="btn-group">
+            <button class="btn btn-outline btn-sm" onclick="purgeOldProposals()">🗑 Purge &gt; 90 Days</button>
+            <button class="btn btn-danger btn-sm" onclick="clearAllProposals()">Clear All</button>
+          </div>
+        </div>
+        <div id="history-empty" class="empty-state">
+          <div class="empty-icon">📁</div>
+          <div style="font-weight:600;margin-bottom:4px">No saved proposals yet</div>
+          <div style="font-size:12px">Proposals and agreements will appear here after generation</div>
+        </div>
+        <table class="admin-table" id="history-table" style="display:none">
+          <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Doc Type</th><th>Actions</th></tr></thead>
+          <tbody id="history-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card cloud-storage-banner" style="background:linear-gradient(135deg,#fffbf0,#fff8e8);border-color:#f0d990;">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <span style="font-size:22px">💡</span>
+          <div>
+            <div style="font-weight:700;margin-bottom:4px;color:#92700c">Loading storage status…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ADMIN PAGE ===== -->
+    <div class="page" id="page-admin">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Equipment Catalog</div>
+          <button class="btn btn-primary btn-sm" onclick="openNewProduct()">+ Add Product</button>
+        </div>
+        <table class="admin-table">
+          <thead><tr><th>SKU</th><th>Description</th><th>Category</th><th>Unit Price</th><th>3-Yr Price</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="catalog-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-bar"></div>Monthly Plans Catalog</div>
+          <button class="btn btn-primary btn-sm" onclick="openNewPlan()">+ Add Plan</button>
+        </div>
+        <table class="admin-table">
+          <thead><tr><th>Plan Name</th><th>Description</th><th>Monthly Rate</th><th>Actions</th></tr></thead>
+          <tbody id="plans-catalog-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card cloud-storage-banner" style="background:linear-gradient(135deg,#fffbf0,#fff8e8);border-color:#f0d990;">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <span style="font-size:22px">💡</span>
+          <div>
+            <div style="font-weight:700;margin-bottom:4px;color:#92700c">Loading storage status…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD PRODUCT MODAL -->
+<div class="modal-overlay" id="modal-add-product">
+  <div class="modal">
+    <div class="modal-title">Add Equipment to Quote</div>
+    <div class="form-group" style="margin-bottom:16px"><label>Select Product</label><select id="modal-product-select"></select></div>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="form-group"><label>Quantity</label><input type="number" id="modal-qty" value="1" min="1"></div>
+      <div class="form-group"><label>Custom Price (optional)</label><input type="number" id="modal-price" placeholder="Leave blank for catalog price" step="0.01"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-add-product')">Cancel</button>
+      <button class="btn btn-primary" onclick="addProductToQuote()">Add to Quote</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PRODUCT MODAL -->
+<div class="modal-overlay" id="modal-new-product">
+  <div class="modal">
+    <div class="modal-title" id="modal-np-title">Add New Product</div>
+    <input type="hidden" id="np-id">
+    <div class="grid-2" style="margin-bottom:14px">
+      <div class="form-group"><label>SKU / Model</label><input type="text" id="np-sku" placeholder="GO9-LTE"></div>
+      <div class="form-group"><label>Category</label><select id="np-category"><option>GPS Device</option><option>Dash Camera</option><option>Accessory</option><option>Installation</option><option>Discount</option><option>Other</option></select></div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px"><label>Product Description</label><input type="text" id="np-desc" placeholder="GO9 LTE/4G GPS Device"></div>
+    <div class="grid-2" style="margin-bottom:14px">
+      <div class="form-group"><label>Unit Price ($)</label><input type="number" id="np-price" placeholder="149.00" step="0.01"></div>
+      <div class="form-group"><label>3-Year Price ($)</label><input type="number" id="np-price-3yr" placeholder="Same as unit price" step="0.01"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px"><label>Status</label><select id="np-active"><option value="true">Active</option><option value="false">Hidden</option></select></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-new-product')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProduct()">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PLAN MODAL -->
+<div class="modal-overlay" id="modal-new-plan">
+  <div class="modal">
+    <div class="modal-title" id="modal-np2-title">Add Monthly Plan</div>
+    <input type="hidden" id="np2-id">
+    <div class="form-group" style="margin-bottom:14px"><label>Plan Name</label><input type="text" id="np2-name" placeholder="Geotab GO Plan"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>Description</label><input type="text" id="np2-desc" placeholder="Full telematics plan with live tracking"></div>
+    <div class="form-group" style="margin-bottom:20px"><label>Monthly Rate ($)</label><input type="number" id="np2-rate" placeholder="29.99" step="0.01"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-new-plan')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePlan()">Save Plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- PREVIEW MODAL -->
+<div class="modal-overlay" id="modal-preview">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">Quote Preview</div>
+    <div id="preview-content"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px">
+      <button class="btn btn-outline" onclick="closeModal('modal-preview')">Close</button>
+      <button class="btn btn-primary" onclick="generateProposal();closeModal('modal-preview')">Download Proposal</button>
+      <button class="btn btn-orange" onclick="generateAgreement();closeModal('modal-preview')">Download Agreement</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK + App (ES module) -->
+<script type="module" src="app.js"></script>
+</body>
+</html>
