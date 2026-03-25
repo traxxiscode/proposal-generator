@@ -492,6 +492,7 @@ function renderHistory() {
   table.style.display = 'table';
   tbody.innerHTML = html;
 }
+window.renderHistory = renderHistory;
 
 function findSavedRecord(id) {
   var p = null;
@@ -835,6 +836,7 @@ function renderAdmin() {
   }
   document.getElementById('plans-catalog-tbody').innerHTML = ph;
 }
+window.renderAdmin = renderAdmin;
 window.openNewProduct = function() {
   document.getElementById('modal-np-title').textContent = 'Add New Product';
   ['np-id','np-sku','np-desc','np-price','np-price-3yr'].forEach(function(id){document.getElementById(id).value='';});
