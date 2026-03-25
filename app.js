@@ -20,8 +20,9 @@ const auth = getAuth(app);
 
 // Sign in anonymously so Firestore rules (auth != null) are satisfied.
 // This runs once at startup before any Firestore reads/writes.
-signInAnonymously(auth).catch(function(e) {
+const authReadyPromise = signInAnonymously(auth).catch(function(e) {
   console.error('[Firebase Auth] Anonymous sign-in failed:', e.code, e.message);
+  return null;
 });
 
 // Firestore document paths
@@ -150,6 +151,7 @@ async function verifyAdminKey(key) {
 // AUTH UI
 // ============================================================
 async function initAuth() {
+  await authReadyPromise;
   var hasAdmin = await checkAdminSetup();
   document.getElementById('auth-loading-panel').style.display = 'none';
   if (!hasAdmin) {
