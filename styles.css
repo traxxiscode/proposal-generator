@@ -121,6 +121,12 @@ input.qty-input{width:60px;text-align:center;padding:5px 6px;}
 .quote-main{flex:1;min-width:0;}
 .quote-sidebar{width:300px;flex-shrink:0;position:sticky;top:74px;}
 .action-bar{background:white;border-radius:12px;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid var(--border);margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+.quote-sidebar-stack{width:360px;}
+.quote-action-bar{display:block;padding:18px 18px 16px;}
+.quote-actions-blurb{font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5;}
+.quote-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.quote-action-grid .btn{justify-content:center;width:100%;}
+.quote-action-grid .btn:first-child{grid-column:span 2;}
 .section-header{display:flex;align-items:center;justify-content:space-between;}
 .empty-state{text-align:center;padding:44px;color:var(--muted);}
 .empty-icon{font-size:44px;margin-bottom:10px;opacity:0.5;}
@@ -180,10 +186,12 @@ input.qty-input{width:60px;text-align:center;padding:5px 6px;}
 .history-empty-mini{
   padding:22px;border:1px dashed #d8e2ee;border-radius:12px;background:#fbfdff;color:var(--muted);font-size:14px;text-align:center;
 }
+.history-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.history-actions .btn{justify-content:center;}
 
 /* History "re-download" button */
 .btn-download{background:rgba(12,40,83,0.08);color:var(--blue);border:1.5px solid rgba(12,40,83,0.2);} 
 .btn-download:hover{background:var(--blue);color:white;}
 
-@media(max-width:960px){.quote-layout{flex-direction:column;}.quote-sidebar{width:100%;position:static;}.grid-2{grid-template-columns:1fr;}.order-type-grid{grid-template-columns:1fr;}.topbar{padding:16px 20px;}.page{padding:24px 20px;}}
+@media(max-width:960px){.quote-layout{flex-direction:column;}.quote-sidebar{width:100%;position:static;}.quote-sidebar-stack{width:100%;}.grid-2{grid-template-columns:1fr;}.order-type-grid{grid-template-columns:1fr;}.topbar{padding:16px 20px;}.page{padding:24px 20px;}}
 @media(max-width:640px){.sidebar{display:none;}.main-content{margin-left:0;}.topbar-left{gap:10px;}.topbar-logo-wrap img{height:34px;}.topbar-title{font-size:19px;}.auth-box{padding:30px 22px;}.auth-actions{flex-direction:column;}}

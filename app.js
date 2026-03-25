@@ -39,6 +39,8 @@ var contractTerm = '24', orderType = 'new';
 var MIN_MONTHLY_NEW = 199.00;
 var proposalHistory = [];  // array of full proposal data objects
 var isAdmin = false;
+var editingRecordId = null;
+var editingRecordType = null;
 
 var DEFAULT_CATALOG = [
   {id:1,sku:'GO9-LTE',desc:'GO9 LTE/4G Model GPS Device',category:'GPS Device',price:149.00,price3yr:149.00,active:true},
@@ -343,9 +345,9 @@ function fmt(n) {
 function saveProposalRecord(docType) {
   var d = getQuoteData();
   if (!d.company) return;
-  // Store ALL quote data so we can regenerate PDF later
+  var reuseExisting = editingRecordId && editingRecordType === docType;
   var record = {
-    id: Date.now(),
+    id: reuseExisting ? editingRecordId : Date.now(),
     timestamp: Date.now(),
     date: new Date().toLocaleDateString('en-US'),
     docType: docType,
@@ -380,7 +382,16 @@ function saveProposalRecord(docType) {
     deposit: d.deposit,
     total: d.total
   };
-  proposalHistory.unshift(record);
+  if (reuseExisting) {
+    for (var i = 0; i < proposalHistory.length; i++) {
+      if (proposalHistory[i].id === editingRecordId) {
+        proposalHistory[i] = record;
+        break;
+      }
+    }
+  } else {
+    proposalHistory.unshift(record);
+  }
   if (isAdmin) saveProposalHistory();
 }
 
@@ -404,7 +415,7 @@ function renderHistory() {
   var proposals = proposalHistory.filter(function(p){ return p.docType === 'Proposal'; });
   var agreements = proposalHistory.filter(function(p){ return p.docType === 'Agreement'; });
 
-  function buildRows(items) {
+  function buildRows(items, docType) {
     var html = '';
     for (var i = 0; i < items.length; i++) {
       var p = items[i];
@@ -417,7 +428,12 @@ function renderHistory() {
       html += '<td><span class="badge badge-blue">'+p.orderLabel+'</span></td>';
       html += '<td class="price-cell">'+fmt(p.total)+'</td>';
       html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
-      html += '<td style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-download btn-sm" onclick="redownloadProposal('+p.id+')">PDF</button><button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">Delete</button></td>';
+      html += '<td><div class="history-actions">';
+      html += '<button class="btn btn-download btn-sm" onclick="'+(docType === 'Proposal' ? 'downloadSavedProposal' : 'downloadSavedAgreement')+'('+p.id+')">Download PDF</button>';
+      html += '<button class="btn btn-outline btn-sm" onclick="editSavedRecord('+p.id+')">Edit</button>';
+      html += '<button class="btn btn-outline btn-sm" onclick="previewSavedRecord('+p.id+')">Preview</button>';
+      html += '<button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">Delete</button>';
+      html += '</div></td>';
       html += '</tr>';
     }
     return html;
@@ -429,12 +445,62 @@ function renderHistory() {
   agreementsTable.style.display = agreements.length ? 'table' : 'none';
   document.getElementById('history-proposals-empty').style.display = proposals.length ? 'none' : 'block';
   document.getElementById('history-agreements-empty').style.display = agreements.length ? 'none' : 'block';
-  proposalsTbody.innerHTML = buildRows(proposals);
-  agreementsTbody.innerHTML = buildRows(agreements);
+  proposalsTbody.innerHTML = buildRows(proposals, 'Proposal');
+  agreementsTbody.innerHTML = buildRows(agreements, 'Agreement');
 }
-window.redownloadProposal = function(id) {
+
+function findSavedRecord(id) {
   var p = null;
   for (var i = 0; i < proposalHistory.length; i++) { if (proposalHistory[i].id === id) { p = proposalHistory[i]; break; } }
+  return p;
+}
+
+function setQuoteFormFromRecord(p) {
+  editingRecordId = p.id;
+  editingRecordType = p.docType;
+  document.getElementById('q-company').value = p.company || '';
+  document.getElementById('q-contact').value = p.contact || '';
+  document.getElementById('q-title').value = p.title || '';
+  document.getElementById('q-email').value = p.email || '';
+  document.getElementById('q-address').value = p.address || '';
+  document.getElementById('q-city').value = p.city || '';
+  document.getElementById('q-state').value = p.state || '';
+  document.getElementById('q-zip').value = p.zip || '';
+  document.getElementById('q-phone').value = p.phone || '';
+  document.getElementById('q-website').value = p.website || '';
+  document.getElementById('q-challenge').value = p.challenge || '';
+  document.getElementById('q-rep').value = p.rep || '';
+  document.getElementById('q-metro').value = p.metro || '';
+  document.getElementById('q-notes').value = p.notes || '';
+  document.getElementById('q-payment-terms').value = p.paymentTerms || '100% Payment Due Up-Front';
+  selectedEquipment = JSON.parse(JSON.stringify(p.equipment || []));
+  selectedPlans = JSON.parse(JSON.stringify(p.plans || []));
+  contractTerm = p.contractTerm || '24';
+  orderType = p.orderType || 'new';
+  document.querySelectorAll('.ot-card').forEach(function(c){c.className='ot-card';});
+  var orderMap = {new:'ot-new', addon:'ot-addon', renewal:'ot-renewal'};
+  var orderClassMap = {new:'selected', addon:'selected-green', renewal:'selected-orange'};
+  var orderEl = document.getElementById(orderMap[orderType] || 'ot-new');
+  if (orderEl) orderEl.className = 'ot-card ' + (orderClassMap[orderType] || 'selected');
+  document.querySelectorAll('.contract-option').forEach(function(c){c.classList.remove('selected');});
+  var contractEl = document.getElementById('contract-' + contractTerm);
+  if (contractEl) contractEl.classList.add('selected');
+  renderEquipmentTable();
+  renderSelectedPlans();
+  renderPlanGrid();
+  updateTotals();
+  showPage('quote');
+  toast('Loaded saved ' + p.docType.toLowerCase() + ' for editing');
+}
+
+window.editSavedRecord = function(id) {
+  var p = findSavedRecord(id);
+  if (!p) return;
+  setQuoteFormFromRecord(p);
+};
+
+window.previewSavedRecord = function(id) {
+  var p = findSavedRecord(id);
   if (!p) return;
   // Show a mini preview with both download buttons
   var er = '';
@@ -458,6 +524,16 @@ window.redownloadProposal = function(id) {
   document.getElementById('redownload-proposal-btn').onclick = function() { generateProposalFromData(p); closeModal('modal-redownload'); };
   document.getElementById('redownload-agreement-btn').onclick = function() { generateAgreementFromData(p); closeModal('modal-redownload'); };
   openModal('modal-redownload');
+};
+
+window.downloadSavedProposal = function(id) {
+  var p = findSavedRecord(id);
+  if (p) generateProposalFromData(p);
+};
+
+window.downloadSavedAgreement = function(id) {
+  var p = findSavedRecord(id);
+  if (p) generateAgreementFromData(p);
 };
 
 window.deleteProposal = async function(id) {
@@ -940,33 +1016,33 @@ function checkPageBreak(doc, y, needed, H, M) {
 }
 async function addPdfPageHeader(doc, opts) {
   var W = opts.W, title = opts.title, subtitle = opts.subtitle || '', rightLines = opts.rightLines || [], M = opts.M || 42;
-  setFill(doc, C.dark); doc.rect(0, 0, W, 88, 'F');
-  setFill(doc, C.orange); doc.rect(0, 84, W, 4, 'F');
-  setFill(doc, C.blue); doc.rect(0, 88, W, 2, 'F');
+  setFill(doc, C.dark); doc.rect(0, 0, W, 80, 'F');
+  setFill(doc, C.orange); doc.rect(0, 80, W, 4, 'F');
+  setFill(doc, C.blue); doc.rect(0, 84, W, 26, 'F');
   var logoData = await getPdfLogoData('dark');
   if (logoData) {
-    doc.addImage(logoData, 'PNG', M, 24, 168, 34);
+    doc.addImage(logoData, 'PNG', M, 22, 164, 32);
   } else {
-    drawPdfLogo(doc, M, 24, 1.08);
+    drawPdfLogo(doc, M, 22, 1.08);
+  }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2); setTxt(doc, [198, 210, 228]);
+  if (subtitle) doc.text(subtitle, W - M, 26, {align:'right'});
+  for (var i = 0; i < rightLines.length; i++) {
+    doc.text(rightLines[i], W - M, 40 + (i * 10), {align:'right'});
   }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(12); setTxt(doc, C.white);
-  doc.text(title, W - M, 34, {align:'right'});
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); setTxt(doc, [198, 210, 228]);
-  if (subtitle) doc.text(subtitle, W - M, 48, {align:'right'});
-  for (var i = 0; i < rightLines.length; i++) {
-    doc.text(rightLines[i], W - M, 62 + (i * 12), {align:'right'});
-  }
+  doc.text(title, W/2, 100, {align:'center'});
 }
 function addPdfInfoGrid(doc, startY, leftItems, rightItems, layout) {
   var y = startY;
   var leftX = layout.leftX, rightX = layout.rightX, colWidth = layout.colWidth;
   function item(label, value, x, yy) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); setTxt(doc, C.muted);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); setTxt(doc, C.muted);
     doc.text(label, x, yy);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); setTxt(doc, value ? C.text : [190, 198, 210]);
     var lines = doc.splitTextToSize(value || '-', colWidth);
-    doc.text(lines, x, yy + 12);
-    return Math.max(18, lines.length * 11 + 8);
+    doc.text(lines, x, yy + 15);
+    return Math.max(26, lines.length * 12 + 14);
   }
   for (var i = 0; i < Math.max(leftItems.length, rightItems.length); i++) {
     var leftH = leftItems[i] ? item(leftItems[i].label, leftItems[i].value, leftX, y) : 18;
@@ -1010,7 +1086,7 @@ async function generateProposalFromData(d) {
     M: M,
     title: 'COMMERCIAL SALES AND SERVICE PROPOSAL',
     subtitle: d.orderLabel,
-    rightLines: [today, 'GPS System: GEOTAB', '888.447.7059 | www.traxxisgps.com']
+    rightLines: [today, '888.447.7059', 'www.traxxisgps.com']
   });
   var y = 118;
   function secHdr(text, accent) {
@@ -1109,9 +1185,7 @@ async function generateProposalFromData(d) {
   toast('Proposal PDF downloaded!');
 }
 window.generateProposal = function() {
-  var d = getQuoteData();
-  saveProposalRecord('Proposal');
-  generateProposalFromData(d);
+  generateProposalFromData(getQuoteData());
 };
 // ============================================================
 // AGREEMENT PDF - works from either live form data or saved record
@@ -1126,7 +1200,7 @@ async function generateAgreementFromData(d) {
     M: M,
     title: 'COMMERCIAL SALES AND SERVICE AGREEMENT',
     subtitle: d.orderLabel,
-    rightLines: [today, 'Traxxis GPS Solutions, Inc.', '888.447.7059 | www.traxxisgps.com']
+    rightLines: [today, '888.447.7059', 'www.traxxisgps.com']
   });
   var y = 116;
   function aSecHdr(text, accentColor) {
@@ -1271,7 +1345,7 @@ async function generateAgreementFromData(d) {
     M: M,
     title: 'COMMERCIAL SALES AND SERVICE AGREEMENT',
     subtitle: 'TERMS AND CONDITIONS',
-    rightLines: ['Traxxis GPS Solutions', 'Orange and blue branded agreement']
+    rightLines: ['Traxxis GPS Solutions', 'Terms and conditions']
   });
   var terms = [
     {h:true,t:'1. TERMS AND CONDITIONS'},
@@ -1319,9 +1393,21 @@ async function generateAgreementFromData(d) {
 }
 
 window.generateAgreement = function() {
-  var d = getQuoteData();
+  generateAgreementFromData(getQuoteData());
+};
+
+window.saveProposalOnly = async function() {
+  if (!isAdmin) { toast('Admin sign-in required to save documents', true); return; }
+  saveProposalRecord('Proposal');
+  await saveProposalHistory();
+  toast(editingRecordType === 'Proposal' ? 'Proposal updated' : 'Proposal saved');
+};
+
+window.saveAgreementOnly = async function() {
+  if (!isAdmin) { toast('Admin sign-in required to save documents', true); return; }
   saveProposalRecord('Agreement');
-  generateAgreementFromData(d);
+  await saveProposalHistory();
+  toast(editingRecordType === 'Agreement' ? 'Agreement updated' : 'Agreement saved');
 };
 
 // ============================================================
