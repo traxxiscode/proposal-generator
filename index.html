@@ -12,48 +12,47 @@
 <body>
 
 <!-- ============================================================
-     FIREBASE AUTH OVERLAY — shown until user is signed in
+     AUTH OVERLAY — Admin Key System
      ============================================================ -->
 <div id="auth-overlay" class="auth-overlay">
   <div class="auth-box">
     <div class="auth-logo">
-      <svg viewBox="0 0 220 58" xmlns="http://www.w3.org/2000/svg" style="max-width:200px;height:auto;">
-        <defs>
-          <linearGradient id="logoGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" style="stop-color:#1CB4E8"/>
-            <stop offset="100%" style="stop-color:#0A7BAF"/>
-          </linearGradient>
-        </defs>
-        <circle cx="18" cy="29" r="6" fill="none" stroke="#E8601C" stroke-width="2.5"/>
-        <circle cx="18" cy="29" r="2" fill="#E8601C"/>
-        <path d="M18 17 L18 12" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <path d="M18 41 L18 46" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <path d="M6 29 L1 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <path d="M30 29 L35 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <text x="44" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="#1a1f2e" letter-spacing="3">TRAXXIS</text>
-        <text x="184" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="#E8601C" letter-spacing="2">GPS</text>
-        <text x="44" y="48" font-family="'Barlow',sans-serif" font-weight="400" font-size="9" fill="rgba(0,0,0,0.35)" letter-spacing="3.5">FLEET TRACKING SOLUTIONS</text>
-      </svg>
-    </div>
-    <div class="auth-title" id="auth-title">Sign In</div>
-    <div class="auth-sub">Quote &amp; Proposal Generator — Team Access</div>
-    <div class="auth-error" id="auth-error"></div>
-
-    <!-- Login Form -->
-    <div id="auth-login-form" class="auth-form">
-      <div class="form-group"><label>Email Address</label><input type="email" id="login-email" placeholder="you@traxxisgps.com" autocomplete="email"></div>
-      <div class="form-group"><label>Password</label><input type="password" id="login-password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleLogin()"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="handleLogin()">Sign In</button>
-      <div class="auth-switch">Don't have an account? <a onclick="switchToRegister()">Create one</a></div>
+      <!-- Black-text logo for white background -->
+      <img src="https://cdn.baseline.is/static/content/logos/VpXJH6gs4Xy6HhRNbzgkmM-lala.svg" alt="Traxxis GPS">
     </div>
 
-    <!-- Register Form -->
-    <div id="auth-register-form" class="auth-form" style="display:none">
-      <div class="form-group"><label>Email Address</label><input type="email" id="reg-email" placeholder="you@traxxisgps.com" autocomplete="email"></div>
-      <div class="form-group"><label>Password</label><input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password"></div>
-      <div class="form-group"><label>Confirm Password</label><input type="password" id="reg-password2" placeholder="Repeat password" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleRegister()"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="handleRegister()">Create Account</button>
-      <div class="auth-switch">Already have an account? <a onclick="switchToLogin()">Sign in</a></div>
+    <!-- SETUP MODE: shown when no admin key exists yet -->
+    <div id="auth-setup-panel" style="display:none">
+      <div class="admin-badge"><span class="admin-lock-icon">🔐</span> First-Time Setup</div>
+      <div class="auth-title">Create Admin Key</div>
+      <div class="auth-sub">No admin key found. Create one now to manage the product catalog and view saved proposals. This key will be required for admin access.</div>
+      <div class="auth-error" id="setup-error"></div>
+      <div class="auth-form">
+        <div class="form-group"><label>Admin Key</label><input type="password" id="setup-key" placeholder="Create a strong admin key" autocomplete="new-password"></div>
+        <div class="form-group"><label>Confirm Admin Key</label><input type="password" id="setup-key2" placeholder="Repeat admin key" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleSetupKey()"></div>
+        <button class="btn btn-orange" style="width:100%;justify-content:center;margin-top:6px" onclick="handleSetupKey()">Create Admin Key</button>
+      </div>
+      <div class="auth-divider">or</div>
+      <button class="btn btn-outline auth-guest-btn" onclick="continueAsGuest()">Continue as Guest (read-only access)</button>
+    </div>
+
+    <!-- LOGIN MODE: enter admin key to get admin access -->
+    <div id="auth-login-panel" style="display:none">
+      <div class="admin-badge"><span class="admin-lock-icon">🔑</span> Admin Access</div>
+      <div class="auth-title">Enter Admin Key</div>
+      <div class="auth-sub">Enter the admin key to access saved proposals, product catalog, and admin settings. Or continue as a guest to create proposals without saving.</div>
+      <div class="auth-error" id="login-error"></div>
+      <div class="auth-form">
+        <div class="form-group"><label>Admin Key</label><input type="password" id="login-key" placeholder="Enter admin key" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleAdminLogin()"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="handleAdminLogin()">Sign In as Admin</button>
+      </div>
+      <div class="auth-divider">or</div>
+      <button class="btn btn-outline auth-guest-btn" onclick="continueAsGuest()">Continue as Guest</button>
+    </div>
+
+    <!-- LOADING STATE -->
+    <div id="auth-loading-panel">
+      <div style="padding:20px;color:var(--muted);font-size:14px">Checking admin setup…</div>
     </div>
   </div>
 </div>
@@ -64,42 +63,32 @@
 <div class="app-shell" id="app-shell" style="display:none">
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <svg viewBox="0 0 220 58" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" style="stop-color:#1CB4E8"/>
-            <stop offset="100%" style="stop-color:#0A7BAF"/>
-          </linearGradient>
-        </defs>
-        <circle cx="18" cy="29" r="6" fill="none" stroke="#E8601C" stroke-width="2.5"/>
-        <circle cx="18" cy="29" r="2" fill="#E8601C"/>
-        <path d="M18 17 L18 12" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <path d="M18 41 L18 46" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <path d="M6 29 L1 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <path d="M30 29 L35 29" stroke="#1CB4E8" stroke-width="2" stroke-linecap="round"/>
-        <text x="44" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="white" letter-spacing="3">TRAXXIS</text>
-        <text x="184" y="33" font-family="'Barlow Condensed',sans-serif" font-weight="800" font-size="28" fill="#E8601C" letter-spacing="2">GPS</text>
-        <text x="44" y="48" font-family="'Barlow',sans-serif" font-weight="400" font-size="9" fill="rgba(255,255,255,0.4)" letter-spacing="3.5">FLEET TRACKING SOLUTIONS</text>
-      </svg>
+      <!-- White-text logo for dark sidebar -->
+      <img src="https://cdn.baseline.is/static/content/logos/mDtvptChQ3XwBLuxuu5hip-lala.svg" alt="Traxxis GPS">
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section">Quoting</div>
       <div class="nav-item active" onclick="showPage('quote')" data-page="quote"><span class="nav-icon">📋</span>New Quote / Proposal</div>
-      <div class="nav-item" onclick="showPage('history')" data-page="history"><span class="nav-icon">📁</span>Saved Proposals</div>
+      <div class="nav-item" id="nav-history" onclick="showPage('history')" data-page="history"><span class="nav-icon">📁</span>Saved Proposals</div>
       <div class="nav-section">Settings</div>
-      <div class="nav-item" onclick="showPage('admin')" data-page="admin"><span class="nav-icon">⚙️</span>Product Catalog</div>
+      <div class="nav-item" id="nav-admin" onclick="showPage('admin')" data-page="admin"><span class="nav-icon">⚙️</span>Product Catalog</div>
     </nav>
-    <div class="sidebar-footer">Traxxis GPS Solutions, Inc.<br>Quote Generator v3.0</div>
+    <div class="sidebar-footer">Traxxis GPS Solutions, Inc.<br>Quote Generator v4.0</div>
   </aside>
 
   <main class="main-content">
     <div class="topbar">
       <div class="topbar-left">
-        <div class="topbar-icon">📋</div>
-        <div><div class="topbar-title">Traxxis GPS Quote Generator</div><div class="topbar-sub">Build proposals &amp; agreements for customers</div></div>
+        <div class="topbar-logo-wrap">
+          <img src="https://cdn.baseline.is/static/content/logos/VpXJH6gs4Xy6HhRNbzgkmM-lala.svg" alt="Traxxis GPS">
+        </div>
+        <div class="topbar-divider"></div>
+        <div><div class="topbar-title">Quote &amp; Proposal Generator</div><div class="topbar-sub">Build proposals &amp; agreements for customers</div></div>
       </div>
-      <div style="font-size:11px;color:var(--muted)">
-        <span id="storage-status" style="display:inline-flex;align-items:center;gap:5px">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span id="admin-mode-badge" style="display:none" class="admin-mode-badge">🔐 Admin Mode &nbsp;<a href="#" onclick="handleAdminSignOut()" style="color:var(--orange-dark);font-weight:700;font-size:10px;text-decoration:none">Sign Out</a></span>
+        <span id="guest-mode-badge" style="display:none;font-size:11px;color:var(--muted)">Guest Mode &nbsp;<a href="#" onclick="showAdminLogin()" style="color:var(--blue);font-weight:600;font-size:11px;text-decoration:none">Sign In</a></span>
+        <span id="storage-status" style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:5px">
           <span class="status-dot orange"></span> Connecting…
         </span>
       </div>
@@ -237,7 +226,7 @@
               <span class="totals-label">Tax <span id="tax-state-lbl" style="font-size:11px;opacity:0.55"></span></span>
               <div class="tax-row-inner">
                 <input type="number" class="tax-pct-input" id="tax-rate-input" value="0" min="0" max="30" step="0.001" oninput="updateTotals()" placeholder="0">
-                <span class="tax-pct-label">%</span>
+                <span class="tax-pct-label" style="color:rgba(255,255,255,0.5);font-size:12px">%</span>
                 <span id="t-tax" style="font-weight:600;min-width:62px;text-align:right">$0.00</span>
               </div>
             </div>
@@ -255,7 +244,7 @@
             <div class="totals-meta">
               <div class="totals-meta-line" id="t-contract-term">Contract: 24 Months</div>
               <div class="totals-meta-line" id="t-order-type-line">Order Type: New</div>
-              <div id="t-min-note" class="totals-meta-line" style="color:rgba(249,115,22,0.6)"></div>
+              <div id="t-min-note" class="totals-meta-line" style="color:rgba(255,167,1,0.7)"></div>
             </div>
           </div>
         </div>
@@ -264,61 +253,75 @@
 
     <!-- ===== PROPOSALS HISTORY PAGE ===== -->
     <div class="page" id="page-history">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title"><div class="card-title-bar"></div>Saved Proposals &amp; Agreements</div>
-          <div class="btn-group">
-            <button class="btn btn-outline btn-sm" onclick="purgeOldProposals()">🗑 Purge &gt; 90 Days</button>
-            <button class="btn btn-danger btn-sm" onclick="clearAllProposals()">Clear All</button>
-          </div>
+      <div id="history-admin-only-msg" style="display:none" class="card" style="text-align:center">
+        <div class="empty-state">
+          <div class="empty-icon">🔐</div>
+          <div style="font-weight:700;margin-bottom:8px;font-size:16px">Admin Access Required</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Sign in with the admin key to view saved proposals and agreements.</div>
+          <button class="btn btn-primary" onclick="showAdminLogin()">Sign In as Admin</button>
         </div>
-        <div id="history-empty" class="empty-state">
-          <div class="empty-icon">📁</div>
-          <div style="font-weight:600;margin-bottom:4px">No saved proposals yet</div>
-          <div style="font-size:12px">Proposals and agreements will appear here after generation</div>
-        </div>
-        <table class="admin-table" id="history-table" style="display:none">
-          <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Doc Type</th><th>Actions</th></tr></thead>
-          <tbody id="history-tbody"></tbody>
-        </table>
       </div>
-      <div class="card cloud-storage-banner" style="background:linear-gradient(135deg,#fffbf0,#fff8e8);border-color:#f0d990;">
-        <div style="display:flex;gap:12px;align-items:flex-start;">
-          <span style="font-size:22px">💡</span>
-          <div>
-            <div style="font-weight:700;margin-bottom:4px;color:#92700c">Loading storage status…</div>
+      <div id="history-content" style="display:none">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-bar"></div>Saved Proposals &amp; Agreements</div>
+            <div class="btn-group">
+              <button class="btn btn-outline btn-sm" onclick="purgeOldProposals()">🗑 Purge &gt; 90 Days</button>
+              <button class="btn btn-danger btn-sm" onclick="clearAllProposals()">Clear All</button>
+            </div>
           </div>
+          <div id="history-empty" class="empty-state">
+            <div class="empty-icon">📁</div>
+            <div style="font-weight:600;margin-bottom:4px">No saved proposals yet</div>
+            <div style="font-size:12px">Proposals and agreements will appear here after generation</div>
+          </div>
+          <table class="admin-table" id="history-table" style="display:none">
+            <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Doc</th><th>Actions</th></tr></thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
 
     <!-- ===== ADMIN PAGE ===== -->
     <div class="page" id="page-admin">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title"><div class="card-title-bar"></div>Equipment Catalog</div>
-          <button class="btn btn-primary btn-sm" onclick="openNewProduct()">+ Add Product</button>
+      <div id="admin-only-msg" style="display:none" class="card">
+        <div class="empty-state">
+          <div class="empty-icon">🔐</div>
+          <div style="font-weight:700;margin-bottom:8px;font-size:16px">Admin Access Required</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Sign in with the admin key to edit the product catalog.</div>
+          <button class="btn btn-primary" onclick="showAdminLogin()">Sign In as Admin</button>
         </div>
-        <table class="admin-table">
-          <thead><tr><th>SKU</th><th>Description</th><th>Category</th><th>Unit Price</th><th>3-Yr Price</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="catalog-tbody"></tbody>
-        </table>
       </div>
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title"><div class="card-title-bar"></div>Monthly Plans Catalog</div>
-          <button class="btn btn-primary btn-sm" onclick="openNewPlan()">+ Add Plan</button>
+      <div id="admin-content" style="display:none">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-bar"></div>Equipment Catalog</div>
+            <button class="btn btn-primary btn-sm" onclick="openNewProduct()">+ Add Product</button>
+          </div>
+          <table class="admin-table">
+            <thead><tr><th>SKU</th><th>Description</th><th>Category</th><th>Unit Price</th><th>3-Yr Price</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="catalog-tbody"></tbody>
+          </table>
         </div>
-        <table class="admin-table">
-          <thead><tr><th>Plan Name</th><th>Description</th><th>Monthly Rate</th><th>Actions</th></tr></thead>
-          <tbody id="plans-catalog-tbody"></tbody>
-        </table>
-      </div>
-      <div class="card cloud-storage-banner" style="background:linear-gradient(135deg,#fffbf0,#fff8e8);border-color:#f0d990;">
-        <div style="display:flex;gap:12px;align-items:flex-start;">
-          <span style="font-size:22px">💡</span>
-          <div>
-            <div style="font-weight:700;margin-bottom:4px;color:#92700c">Loading storage status…</div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-bar"></div>Monthly Plans Catalog</div>
+            <button class="btn btn-primary btn-sm" onclick="openNewPlan()">+ Add Plan</button>
+          </div>
+          <table class="admin-table">
+            <thead><tr><th>Plan Name</th><th>Description</th><th>Monthly Rate</th><th>Actions</th></tr></thead>
+            <tbody id="plans-catalog-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card" style="background:linear-gradient(135deg,#fff8f0,#fff3e8);border-color:#fcd9a0;">
+          <div style="display:flex;gap:12px;align-items:center;">
+            <span style="font-size:22px">🔐</span>
+            <div>
+              <div style="font-weight:700;margin-bottom:4px;color:#92400e">Change Admin Key</div>
+              <div style="font-size:13px;color:#78350f;margin-bottom:12px">Update the admin key for this application. All admins will need to use the new key.</div>
+              <button class="btn btn-outline btn-sm" onclick="openChangeKey()">Change Admin Key</button>
+            </div>
           </div>
         </div>
       </div>
@@ -388,6 +391,48 @@
       <button class="btn btn-outline" onclick="closeModal('modal-preview')">Close</button>
       <button class="btn btn-primary" onclick="generateProposal();closeModal('modal-preview')">Download Proposal</button>
       <button class="btn btn-orange" onclick="generateAgreement();closeModal('modal-preview')">Download Agreement</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN MODAL (for guests wanting admin mid-session) -->
+<div class="modal-overlay" id="modal-admin-login">
+  <div class="modal" style="max-width:400px;text-align:center">
+    <div class="modal-title">Admin Sign In</div>
+    <div class="auth-error" id="modal-admin-error"></div>
+    <div class="form-group" style="margin-bottom:20px;text-align:left"><label>Admin Key</label><input type="password" id="modal-admin-key" placeholder="Enter admin key" onkeydown="if(event.key==='Enter')handleModalAdminLogin()"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-admin-login')">Cancel</button>
+      <button class="btn btn-primary" onclick="handleModalAdminLogin()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHANGE ADMIN KEY MODAL -->
+<div class="modal-overlay" id="modal-change-key">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">Change Admin Key</div>
+    <div class="auth-error" id="change-key-error"></div>
+    <div class="auth-success" id="change-key-success"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>Current Admin Key</label><input type="password" id="ck-current" placeholder="Current admin key"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>New Admin Key</label><input type="password" id="ck-new" placeholder="New admin key"></div>
+    <div class="form-group" style="margin-bottom:20px"><label>Confirm New Key</label><input type="password" id="ck-new2" placeholder="Repeat new admin key"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('modal-change-key')">Cancel</button>
+      <button class="btn btn-orange" onclick="handleChangeKey()">Update Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- RE-DOWNLOAD MODAL: regenerate PDF from saved data -->
+<div class="modal-overlay" id="modal-redownload">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">Re-generate Document</div>
+    <div id="redownload-content"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px">
+      <button class="btn btn-outline" onclick="closeModal('modal-redownload')">Close</button>
+      <button class="btn btn-primary" id="redownload-proposal-btn" onclick="">📄 Download Proposal PDF</button>
+      <button class="btn btn-orange" id="redownload-agreement-btn" onclick="">✍️ Download Agreement PDF</button>
     </div>
   </div>
 </div>

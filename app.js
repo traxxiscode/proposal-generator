@@ -2,8 +2,7 @@
 // FIREBASE CONFIGURATION & INITIALIZATION
 // ============================================================
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, getDocs, deleteDoc, query, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBNEgyzigOZG9yyLUt5bPJajSAGivbdtyg",
@@ -15,14 +14,14 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Firestore document references (shared across all authenticated users)
+// Firestore document paths
 const COLLECTION = 'proposal_generator';
-const CATALOG_DOC = 'catalog';
-const PLANS_DOC = 'plans';
-const PROPOSALS_DOC = 'proposals';
+const CATALOG_DOC   = 'catalog';
+const PLANS_DOC     = 'plans';
+const PROPOSALS_COL = 'proposals'; // sub-collection, one doc per proposal
+const ADMIN_DOC     = 'admin_auth'; // stores {hash, salt}
 
 // ============================================================
 // STATE
@@ -30,8 +29,8 @@ const PROPOSALS_DOC = 'proposals';
 var catalog = [], plans = [], selectedEquipment = [], selectedPlans = [];
 var contractTerm = '24', orderType = 'new';
 var MIN_MONTHLY_NEW = 199.00;
-var proposalHistory = [];
-var currentUser = null;
+var proposalHistory = [];  // array of full proposal data objects
+var isAdmin = false;
 
 var DEFAULT_CATALOG = [
   {id:1,sku:'GO9-LTE',desc:'GO9 LTE/4G Model GPS Device',category:'GPS Device',price:149.00,price3yr:149.00,active:true},
@@ -49,89 +48,196 @@ var DEFAULT_PLANS = [
 ];
 
 // ============================================================
+// CRYPTO HELPERS — Web Crypto API (SHA-256 + random salt)
+// ============================================================
+async function generateSalt() {
+  var arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+
+async function hashKey(key, salt) {
+  var enc = new TextEncoder();
+  var data = enc.encode(salt + key);
+  var hashBuf = await crypto.subtle.digest('SHA-256', data);
+  var hashArr = Array.from(new Uint8Array(hashBuf));
+  return hashArr.map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+
+// ============================================================
+// AUTH — Admin Key System
+// ============================================================
+async function checkAdminSetup() {
+  try {
+    var snap = await getDoc(doc(db, COLLECTION, ADMIN_DOC));
+    return snap.exists();
+  } catch(e) { return false; }
+}
+
+async function createAdminKey(key) {
+  var salt = await generateSalt();
+  var hash = await hashKey(key, salt);
+  await setDoc(doc(db, COLLECTION, ADMIN_DOC), { hash: hash, salt: salt });
+}
+
+async function verifyAdminKey(key) {
+  try {
+    var snap = await getDoc(doc(db, COLLECTION, ADMIN_DOC));
+    if (!snap.exists()) return false;
+    var data = snap.data();
+    var hash = await hashKey(key, data.salt);
+    return hash === data.hash;
+  } catch(e) { return false; }
+}
+
+// ============================================================
 // AUTH UI
 // ============================================================
-function showAuthOverlay() {
-  document.getElementById('auth-overlay').style.display = 'flex';
-  document.getElementById('app-shell').style.display = 'none';
+async function initAuth() {
+  var hasAdmin = await checkAdminSetup();
+  document.getElementById('auth-loading-panel').style.display = 'none';
+  if (!hasAdmin) {
+    document.getElementById('auth-setup-panel').style.display = 'block';
+  } else {
+    document.getElementById('auth-login-panel').style.display = 'block';
+  }
 }
+
+window.handleSetupKey = async function() {
+  var key = document.getElementById('setup-key').value;
+  var key2 = document.getElementById('setup-key2').value;
+  var err = document.getElementById('setup-error');
+  err.style.display = 'none';
+  if (!key) { err.textContent = 'Please enter an admin key.'; err.style.display = 'block'; return; }
+  if (key.length < 6) { err.textContent = 'Admin key must be at least 6 characters.'; err.style.display = 'block'; return; }
+  if (key !== key2) { err.textContent = 'Keys do not match.'; err.style.display = 'block'; return; }
+  try {
+    await createAdminKey(key);
+    bootAsAdmin();
+  } catch(e) {
+    err.textContent = 'Error saving admin key. Check connection.'; err.style.display = 'block';
+  }
+};
+
+window.handleAdminLogin = async function() {
+  var key = document.getElementById('login-key').value;
+  var err = document.getElementById('login-error');
+  err.style.display = 'none';
+  if (!key) { err.textContent = 'Please enter the admin key.'; err.style.display = 'block'; return; }
+  var ok = await verifyAdminKey(key);
+  if (ok) {
+    bootAsAdmin();
+  } else {
+    err.textContent = 'Incorrect admin key.'; err.style.display = 'block';
+  }
+};
+
+window.continueAsGuest = function() {
+  bootAsGuest();
+};
+
+async function bootAsAdmin() {
+  isAdmin = true;
+  await loadData(true);
+  renderPlanGrid(); updateTotals();
+  hideAuthOverlay();
+  updateAdminUI();
+}
+
+async function bootAsGuest() {
+  isAdmin = false;
+  await loadData(false);
+  renderPlanGrid(); updateTotals();
+  hideAuthOverlay();
+  updateAdminUI();
+}
+
+function updateAdminUI() {
+  // Topbar badges
+  document.getElementById('admin-mode-badge').style.display = isAdmin ? 'inline-flex' : 'none';
+  document.getElementById('guest-mode-badge').style.display = !isAdmin ? 'inline-block' : 'none';
+
+  // Admin-gated pages
+  document.getElementById('admin-only-msg').style.display = isAdmin ? 'none' : 'block';
+  document.getElementById('admin-content').style.display = isAdmin ? 'block' : 'none';
+  document.getElementById('history-admin-only-msg').style.display = isAdmin ? 'none' : 'block';
+  document.getElementById('history-content').style.display = isAdmin ? 'block' : 'none';
+
+  // Status bar
+  var statusEl = document.getElementById('storage-status');
+  if (statusEl) {
+    if (isAdmin) {
+      statusEl.innerHTML = '<span class="status-dot green"></span> Firebase — Admin';
+    } else {
+      statusEl.innerHTML = '<span class="status-dot blue"></span> Firebase — Guest';
+    }
+  }
+}
+
+window.handleAdminSignOut = function() {
+  isAdmin = false;
+  updateAdminUI();
+  showPage('quote');
+  toast('Signed out of admin mode');
+};
+
+window.showAdminLogin = function() {
+  document.getElementById('modal-admin-key').value = '';
+  document.getElementById('modal-admin-error').style.display = 'none';
+  openModal('modal-admin-login');
+};
+
+window.handleModalAdminLogin = async function() {
+  var key = document.getElementById('modal-admin-key').value;
+  var err = document.getElementById('modal-admin-error');
+  err.style.display = 'none';
+  if (!key) { err.textContent = 'Enter the admin key.'; err.style.display = 'block'; return; }
+  var ok = await verifyAdminKey(key);
+  if (ok) {
+    isAdmin = true;
+    closeModal('modal-admin-login');
+    await loadData(true);
+    updateAdminUI();
+    renderPlanGrid();
+    toast('Admin mode activated');
+  } else {
+    err.textContent = 'Incorrect admin key.'; err.style.display = 'block';
+  }
+};
+
+window.openChangeKey = function() {
+  ['ck-current','ck-new','ck-new2'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('change-key-error').style.display = 'none';
+  document.getElementById('change-key-success').style.display = 'none';
+  openModal('modal-change-key');
+};
+
+window.handleChangeKey = async function() {
+  var cur = document.getElementById('ck-current').value;
+  var nw = document.getElementById('ck-new').value;
+  var nw2 = document.getElementById('ck-new2').value;
+  var err = document.getElementById('change-key-error');
+  var suc = document.getElementById('change-key-success');
+  err.style.display = 'none'; suc.style.display = 'none';
+  if (!cur || !nw) { err.textContent = 'Fill in all fields.'; err.style.display = 'block'; return; }
+  if (nw !== nw2) { err.textContent = 'New keys do not match.'; err.style.display = 'block'; return; }
+  if (nw.length < 6) { err.textContent = 'New key must be at least 6 characters.'; err.style.display = 'block'; return; }
+  var ok = await verifyAdminKey(cur);
+  if (!ok) { err.textContent = 'Current admin key is incorrect.'; err.style.display = 'block'; return; }
+  await createAdminKey(nw);
+  suc.textContent = 'Admin key updated successfully.'; suc.style.display = 'block';
+  setTimeout(function(){ closeModal('modal-change-key'); }, 1500);
+};
+
 function hideAuthOverlay() {
   document.getElementById('auth-overlay').style.display = 'none';
   document.getElementById('app-shell').style.display = 'flex';
-}
-function showAuthError(msg) {
-  var el = document.getElementById('auth-error');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-function clearAuthError() {
-  var el = document.getElementById('auth-error');
-  el.style.display = 'none';
-}
-function switchToRegister() {
-  document.getElementById('auth-login-form').style.display = 'none';
-  document.getElementById('auth-register-form').style.display = 'block';
-  document.getElementById('auth-title').textContent = 'Create Account';
-  clearAuthError();
-}
-function switchToLogin() {
-  document.getElementById('auth-register-form').style.display = 'none';
-  document.getElementById('auth-login-form').style.display = 'block';
-  document.getElementById('auth-title').textContent = 'Sign In';
-  clearAuthError();
-}
-
-window.handleLogin = async function() {
-  clearAuthError();
-  var email = document.getElementById('login-email').value.trim();
-  var pass = document.getElementById('login-password').value;
-  if (!email || !pass) { showAuthError('Please enter your email and password.'); return; }
-  try {
-    await signInWithEmailAndPassword(auth, email, pass);
-  } catch(e) {
-    showAuthError(friendlyAuthError(e.code));
-  }
-};
-
-window.handleRegister = async function() {
-  clearAuthError();
-  var email = document.getElementById('reg-email').value.trim();
-  var pass = document.getElementById('reg-password').value;
-  var pass2 = document.getElementById('reg-password2').value;
-  if (!email || !pass) { showAuthError('Please fill in all fields.'); return; }
-  if (pass !== pass2) { showAuthError('Passwords do not match.'); return; }
-  if (pass.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
-  try {
-    await createUserWithEmailAndPassword(auth, email, pass);
-  } catch(e) {
-    showAuthError(friendlyAuthError(e.code));
-  }
-};
-
-window.handleSignOut = async function() {
-  await signOut(auth);
-};
-
-window.switchToRegister = switchToRegister;
-window.switchToLogin = switchToLogin;
-
-function friendlyAuthError(code) {
-  var msgs = {
-    'auth/invalid-email': 'Invalid email address.',
-    'auth/user-not-found': 'No account found with that email.',
-    'auth/wrong-password': 'Incorrect password.',
-    'auth/email-already-in-use': 'An account already exists with this email.',
-    'auth/weak-password': 'Password should be at least 6 characters.',
-    'auth/too-many-requests': 'Too many attempts. Please try again later.',
-    'auth/invalid-credential': 'Invalid email or password.'
-  };
-  return msgs[code] || 'Authentication error. Please try again.';
 }
 
 // ============================================================
 // FIREBASE DATA OPERATIONS
 // ============================================================
-async function loadData() {
+async function loadData(adminMode) {
   try {
     var catSnap = await getDoc(doc(db, COLLECTION, CATALOG_DOC));
     catalog = catSnap.exists() ? catSnap.data().items : JSON.parse(JSON.stringify(DEFAULT_CATALOG));
@@ -142,10 +248,15 @@ async function loadData() {
     plans = plansSnap.exists() ? plansSnap.data().items : JSON.parse(JSON.stringify(DEFAULT_PLANS));
   } catch(e) { plans = JSON.parse(JSON.stringify(DEFAULT_PLANS)); }
 
+  if (adminMode) {
+    await loadProposals();
+  }
+}
+
+async function loadProposals() {
   try {
-    var propSnap = await getDoc(doc(db, COLLECTION, PROPOSALS_DOC));
-    proposalHistory = propSnap.exists() ? (propSnap.data().items || []) : [];
-    // Auto-purge proposals older than 90 days
+    var snap = await getDoc(doc(db, COLLECTION, 'proposals_list'));
+    proposalHistory = snap.exists() ? (snap.data().items || []) : [];
     autoPurgeProposals();
   } catch(e) { proposalHistory = []; }
 }
@@ -159,10 +270,9 @@ async function saveData() {
 
 async function saveProposalHistory() {
   try {
-    // Keep max 500 proposals
     if (proposalHistory.length > 500) proposalHistory = proposalHistory.slice(0, 500);
-    await setDoc(doc(db, COLLECTION, PROPOSALS_DOC), { items: proposalHistory });
-  } catch(e) { console.error('Error saving proposals:', e); toast('Save failed — check connection', true); }
+    await setDoc(doc(db, COLLECTION, 'proposals_list'), { items: proposalHistory });
+  } catch(e) { console.error('Error saving proposals:', e); toast('Save failed', true); }
 }
 
 function autoPurgeProposals() {
@@ -170,37 +280,6 @@ function autoPurgeProposals() {
   var before = proposalHistory.length;
   proposalHistory = proposalHistory.filter(function(p) { return p.timestamp > cutoff; });
   if (proposalHistory.length < before) { saveProposalHistory(); }
-}
-
-// ============================================================
-// AUTH STATE LISTENER — boots the app
-// ============================================================
-onAuthStateChanged(auth, async function(user) {
-  if (user) {
-    currentUser = user;
-    // Update status bar
-    var statusEl = document.getElementById('storage-status');
-    if (statusEl) statusEl.innerHTML = '<span class="status-dot green"></span> Firebase — ' + user.email + ' &nbsp;<a href="#" onclick="handleSignOut()" style="color:var(--blue);font-weight:600;font-size:11px">Sign Out</a>';
-    // Load data then boot UI
-    await loadData();
-    renderPlanGrid();
-    updateTotals();
-    hideAuthOverlay();
-    // Update info banner in history/admin pages
-    updateCloudBanners();
-  } else {
-    currentUser = null;
-    showAuthOverlay();
-  }
-});
-
-function updateCloudBanners() {
-  var banners = document.querySelectorAll('.cloud-storage-banner');
-  banners.forEach(function(b) {
-    b.innerHTML = '<div style="display:flex;gap:12px;align-items:flex-start;"><span style="font-size:22px">☁️</span><div><div style="font-weight:700;margin-bottom:4px;color:#0a6e3f">Firebase Cloud Storage Active</div><div style="font-size:13px;color:#1a7a4a;line-height:1.5">All proposals, catalog changes, and plan updates are synced to Firestore and shared across your entire team in real-time.</div></div></div>';
-    b.style.background = 'linear-gradient(135deg,#f0fff8,#e6fff3)';
-    b.style.borderColor = '#86efac';
-  });
 }
 
 // ============================================================
@@ -234,28 +313,54 @@ function fmt(n) {
 }
 
 // ============================================================
-// PROPOSAL HISTORY
+// PROPOSAL HISTORY — saves full quote data (no PDF)
 // ============================================================
 function saveProposalRecord(docType) {
   var d = getQuoteData();
   if (!d.company) return;
-  proposalHistory.unshift({
+  // Store ALL quote data so we can regenerate PDF later
+  var record = {
     id: Date.now(),
     timestamp: Date.now(),
     date: new Date().toLocaleDateString('en-US'),
+    docType: docType,
+    // Full data for PDF regeneration
     company: d.company,
     contact: d.contact,
+    title: d.title,
+    email: d.email,
+    address: d.address,
+    city: d.city,
+    state: d.state,
+    zip: d.zip,
+    phone: d.phone,
+    website: d.website,
+    challenge: d.challenge,
+    rep: d.rep,
+    metro: d.metro,
+    notes: d.notes,
+    paymentTerms: d.paymentTerms,
+    contractTerm: d.contractTerm,
     orderType: d.orderType,
     orderLabel: d.orderLabel,
-    total: d.total,
-    monthly: d.monthly,
     termLabel: d.termLabel,
-    docType: docType,
-    rep: d.rep
-  });
-  saveProposalHistory();
+    equipment: d.equipment,
+    plans: d.plans,
+    taxRate: d.taxRate,
+    taxAmt: d.taxAmt,
+    equipSub: d.equipSub,
+    monthly: d.monthly,
+    monthlyRaw: d.monthlyRaw,
+    usedMin: d.usedMin,
+    deposit: d.deposit,
+    total: d.total
+  };
+  proposalHistory.unshift(record);
+  if (isAdmin) saveProposalHistory();
 }
+
 function renderHistory() {
+  if (!isAdmin) return;
   var tbody = document.getElementById('history-tbody');
   var table = document.getElementById('history-table');
   var empty = document.getElementById('history-empty');
@@ -276,11 +381,40 @@ function renderHistory() {
     html += '<td class="price-cell">'+fmt(p.total)+'</td>';
     html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
     html += '<td><span class="badge '+typeColor+'">'+p.docType+'</span></td>';
-    html += '<td><button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">✕</button></td>';
+    html += '<td style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-download btn-sm" onclick="redownloadProposal('+p.id+')">⬇ PDF</button><button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">✕</button></td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
 }
+
+window.redownloadProposal = function(id) {
+  var p = null;
+  for (var i = 0; i < proposalHistory.length; i++) { if (proposalHistory[i].id === id) { p = proposalHistory[i]; break; } }
+  if (!p) return;
+  // Show a mini preview with both download buttons
+  var er = '';
+  for (var i=0;i<p.equipment.length;i++){var e=p.equipment[i];er+='<tr><td style="padding:6px 10px;text-align:center">'+e.qty+'</td><td style="padding:6px 10px">'+e.desc+'</td><td style="padding:6px 10px;text-align:right">'+fmt(e.unitPrice)+'</td><td style="padding:6px 10px;text-align:right;font-weight:600">'+fmt(e.unitPrice*e.qty)+'</td></tr>';}
+  var pr = '';
+  for (var j=0;j<p.plans.length;j++){var pl=p.plans[j];pr+='<tr><td style="padding:6px 10px;text-align:center">'+pl.qty+'</td><td style="padding:6px 10px">'+pl.name+'</td><td style="padding:6px 10px;text-align:right">'+fmt(pl.rate)+'</td><td style="padding:6px 10px;text-align:right;font-weight:600">'+fmt(pl.rate*pl.qty)+'</td></tr>';}
+  document.getElementById('redownload-content').innerHTML =
+    '<div style="background:linear-gradient(135deg,var(--dark),#0d2040);color:white;border-radius:10px;padding:16px;margin-bottom:14px">'+
+    '<div style="font-size:17px;font-weight:700">'+p.company+'</div>'+
+    '<div style="opacity:0.6;font-size:13px;margin-top:2px">'+p.contact+(p.title?', '+p.title:'')+'</div>'+
+    '<div style="margin-top:8px;font-size:12px;opacity:0.5">'+p.date+' · '+p.termLabel+' · '+p.orderLabel+'</div></div>'+
+    (p.equipment.length?'<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px"><thead style="background:var(--dark);color:white"><tr><th style="padding:6px 10px">Qty</th><th style="padding:6px 10px">Equipment</th><th style="padding:6px 10px;text-align:right">Unit</th><th style="padding:6px 10px;text-align:right">Ext.</th></tr></thead><tbody>'+er+'</tbody></table>':'')+
+    (p.plans.length?'<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px"><thead style="background:#1a3a6a;color:white"><tr><th style="padding:6px 10px">Qty</th><th style="padding:6px 10px">Plan</th><th style="padding:6px 10px;text-align:right">Rate</th><th style="padding:6px 10px;text-align:right">Total</th></tr></thead><tbody>'+pr+'</tbody></table>':'')+
+    '<div style="background:#f4f8ff;border-radius:8px;padding:14px;font-size:13px">'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--muted)">Equipment Subtotal</span><strong>'+fmt(p.equipSub)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--muted)">Tax</span><strong>'+fmt(p.taxAmt)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--muted)">Deposit (2 mo.)</span><strong>'+fmt(p.deposit)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #dde8f5;margin-top:6px;font-size:16px"><span style="font-weight:700">Total Due</span><strong style="color:var(--blue-mid)">'+fmt(p.total)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;color:var(--orange);font-weight:700;font-size:14px"><span>Monthly</span><span>'+fmt(p.monthly)+'/mo</span></div></div>';
+
+  document.getElementById('redownload-proposal-btn').onclick = function() { generateProposalFromData(p); closeModal('modal-redownload'); };
+  document.getElementById('redownload-agreement-btn').onclick = function() { generateAgreementFromData(p); closeModal('modal-redownload'); };
+  openModal('modal-redownload');
+};
+
 window.deleteProposal = async function(id) {
   proposalHistory = proposalHistory.filter(function(p){return p.id!==id;});
   await saveProposalHistory();
@@ -512,6 +646,7 @@ window.removeEquip = function(i) { selectedEquipment.splice(i, 1); renderEquipme
 // ADMIN
 // ============================================================
 function renderAdmin() {
+  if (!isAdmin) return;
   var tb = document.getElementById('catalog-tbody'), html = '';
   for (var i = 0; i < catalog.length; i++) {
     var p = catalog[i];
@@ -644,25 +779,25 @@ function getQuoteData() {
 // ============================================================
 window.previewQuote = function() {
   var d = getQuoteData();
-  var otColors = {new:'#0284c7',addon:'#16a34a',renewal:'#E8601C'};
-  var otColor = otColors[d.orderType] || '#0284c7';
+  var otColors = {new:'var(--blue)',addon:'#16a34a',renewal:'var(--orange)'};
+  var otColor = otColors[d.orderType] || 'var(--blue)';
   var er = '';
   for (var i=0;i<d.equipment.length;i++){var e=d.equipment[i];er+='<tr><td style="padding:8px 10px;text-align:center">'+e.qty+'</td><td style="padding:8px 10px">'+e.desc+'</td><td style="padding:8px 10px;text-align:right">'+fmt(e.unitPrice)+'</td><td style="padding:8px 10px;text-align:right;font-weight:600">'+fmt(e.unitPrice*e.qty)+'</td></tr>';}
   var pr = '';
   for (var j=0;j<d.plans.length;j++){var pl=d.plans[j];pr+='<tr><td style="padding:8px 10px;text-align:center">'+pl.qty+'</td><td style="padding:8px 10px">'+pl.name+'</td><td style="padding:8px 10px;text-align:right">'+fmt(pl.rate)+'</td><td style="padding:8px 10px;text-align:right;font-weight:600">'+fmt(pl.rate*pl.qty)+'</td></tr>';}
   document.getElementById('preview-content').innerHTML =
-    '<div style="background:linear-gradient(135deg,#1a2236,#1e2d45);color:white;border-radius:10px;padding:18px;margin-bottom:16px">'+
+    '<div style="background:linear-gradient(135deg,var(--dark),#0d2040);color:white;border-radius:10px;padding:18px;margin-bottom:16px">'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
     '<div><div style="font-size:19px;font-weight:700">'+d.company+'</div><div style="opacity:0.6;font-size:13px;margin-top:2px">'+d.contact+(d.title?', '+d.title:'')+'</div></div>'+
     '<div style="text-align:right"><span style="background:'+otColor+';color:white;padding:3px 11px;border-radius:5px;font-size:11.5px;font-weight:700">'+d.orderLabel+'</span><div style="margin-top:6px;font-size:11px;opacity:0.5">'+d.termLabel+'</div></div></div></div>'+
-    (d.equipment.length ? '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px"><thead style="background:#1a2236;color:white"><tr><th style="padding:8px 10px;text-align:center;width:40px">Qty</th><th style="padding:8px 10px;text-align:left">Equipment</th><th style="padding:8px 10px;text-align:right">Unit</th><th style="padding:8px 10px;text-align:right">Ext.</th></tr></thead><tbody>'+er+'</tbody></table>' : '') +
-    (d.plans.length ? '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px"><thead style="background:#2a3a52;color:white"><tr><th style="padding:8px 10px;text-align:center;width:40px">Qty</th><th style="padding:8px 10px;text-align:left">Plan</th><th style="padding:8px 10px;text-align:right">Rate</th><th style="padding:8px 10px;text-align:right">Total</th></tr></thead><tbody>'+pr+'</tbody></table>' : '') +
+    (d.equipment.length ? '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px"><thead style="background:var(--dark);color:white"><tr><th style="padding:8px 10px;text-align:center;width:40px">Qty</th><th style="padding:8px 10px;text-align:left">Equipment</th><th style="padding:8px 10px;text-align:right">Unit</th><th style="padding:8px 10px;text-align:right">Ext.</th></tr></thead><tbody>'+er+'</tbody></table>' : '') +
+    (d.plans.length ? '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px"><thead style="background:#1a3a6a;color:white"><tr><th style="padding:8px 10px;text-align:center;width:40px">Qty</th><th style="padding:8px 10px;text-align:left">Plan</th><th style="padding:8px 10px;text-align:right">Rate</th><th style="padding:8px 10px;text-align:right">Total</th></tr></thead><tbody>'+pr+'</tbody></table>' : '') +
     '<div style="background:#f4f8ff;border-radius:9px;padding:16px;font-size:13.5px">'+
-    '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#64748b">Equipment Subtotal</span><strong>'+fmt(d.equipSub)+'</strong></div>'+
-    '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#64748b">Tax'+(d.taxRate>0?' ('+d.taxRate+'%)':' (N/A)')+'</span><strong>'+fmt(d.taxAmt)+'</strong></div>'+
-    '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#64748b">Access Plan Deposit (2 mo.)</span><strong>'+fmt(d.deposit)+'</strong></div>'+
-    '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #dde8f5;margin-top:8px;font-size:17px"><span style="font-weight:700">Total Amount Due</span><strong style="color:#0A7BAF">'+fmt(d.total)+'</strong></div>'+
-    '<div style="display:flex;justify-content:space-between;color:#E8601C;font-weight:700;font-size:15px"><span>Monthly Total'+(d.usedMin?' <small style=\'font-size:10px;opacity:0.7\'>(min applied)</small>':'')+'</span><span>'+fmt(d.monthly)+'/mo</span></div></div>';
+    '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Equipment Subtotal</span><strong>'+fmt(d.equipSub)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Tax'+(d.taxRate>0?' ('+d.taxRate+'%)':' (N/A)')+'</span><strong>'+fmt(d.taxAmt)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Access Plan Deposit (2 mo.)</span><strong>'+fmt(d.deposit)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #dde8f5;margin-top:8px;font-size:17px"><span style="font-weight:700">Total Amount Due</span><strong style="color:var(--blue-mid)">'+fmt(d.total)+'</strong></div>'+
+    '<div style="display:flex;justify-content:space-between;color:var(--orange);font-weight:700;font-size:15px"><span>Monthly Total'+(d.usedMin?' <small style=\'font-size:10px;opacity:0.7\'>(min applied)</small>':'')+'</span><span>'+fmt(d.monthly)+'/mo</span></div></div>';
   openModal('modal-preview');
 };
 
@@ -670,14 +805,14 @@ window.previewQuote = function() {
 // PDF HELPERS
 // ============================================================
 var C = {
-  dark: [22, 28, 45],
-  mid:  [32, 44, 68],
-  blue: [28, 180, 232],
-  orange: [232, 96, 28],
-  light: [240, 246, 255],
-  white: [255, 255, 255],
-  muted: [120, 135, 158],
-  text:  [25, 38, 58]
+  dark:   [5, 16, 34],
+  mid:    [12, 40, 83],
+  blue:   [26, 74, 138],
+  orange: [255, 120, 1],
+  light:  [240, 246, 255],
+  white:  [255, 255, 255],
+  muted:  [120, 135, 158],
+  text:   [25, 38, 58]
 };
 function setFill(doc, rgb) { doc.setFillColor(rgb[0], rgb[1], rgb[2]); }
 function setStroke(doc, rgb) { doc.setDrawColor(rgb[0], rgb[1], rgb[2]); }
@@ -685,12 +820,13 @@ function setTxt(doc, rgb) { doc.setTextColor(rgb[0], rgb[1], rgb[2]); }
 
 function drawPdfLogo(doc, x, y, scale) {
   scale = scale || 1;
+  // GPS pin / target icon
   doc.setLineWidth(1.8*scale);
   setStroke(doc, C.orange);
   doc.circle(x+12*scale, y+12*scale, 5*scale, 'S');
   setFill(doc, C.orange);
   doc.circle(x+12*scale, y+12*scale, 1.5*scale, 'F');
-  setStroke(doc, C.blue);
+  setStroke(doc, [180,200,230]);
   doc.setLineWidth(1.2*scale);
   doc.line(x+12*scale, y+3*scale, x+12*scale, y+6*scale);
   doc.line(x+12*scale, y+18*scale, x+12*scale, y+21*scale);
@@ -718,7 +854,7 @@ function addPdfFooter(doc, W, H, M) {
     doc.setFont('helvetica','normal'); doc.setFontSize(7);
     setTxt(doc, [120, 140, 170]);
     doc.text('Traxxis GPS Solutions, Inc.  ·  114 E. Main St., Suite 201, Rock Hill, SC 29730  ·  888.447.7059  ·  www.traxxisgps.com', W/2, H-12, {align:'center'});
-    setTxt(doc, [70, 100, 145]);
+    setTxt(doc, [100, 130, 180]);
     doc.text('Page ' + i + ' of ' + n, W-M, H-12, {align:'right'});
     setTxt(doc, [80, 100, 130]);
     doc.text('CONFIDENTIAL', M, H-12);
@@ -731,10 +867,9 @@ function checkPageBreak(doc, y, needed, H, M) {
 }
 
 // ============================================================
-// PROPOSAL PDF
+// PROPOSAL PDF — works from either live form data or saved record
 // ============================================================
-window.generateProposal = function() {
-  var d = getQuoteData();
+function generateProposalFromData(d) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
   var W = 612, H = 792, M = 42;
@@ -879,16 +1014,20 @@ window.generateProposal = function() {
   }
 
   addPdfFooter(doc, W, H, M);
-  saveProposalRecord('Proposal');
   doc.save((d.company||'Proposal').replace(/[^a-z0-9]/gi,'_')+'_Proposal.pdf');
   toast('Proposal PDF downloaded!');
+}
+
+window.generateProposal = function() {
+  var d = getQuoteData();
+  saveProposalRecord('Proposal');
+  generateProposalFromData(d);
 };
 
 // ============================================================
-// AGREEMENT PDF
+// AGREEMENT PDF — works from either live form data or saved record
 // ============================================================
-window.generateAgreement = function() {
-  var d = getQuoteData();
+function generateAgreementFromData(d) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
   var W = 612, H = 792, M = 36;
@@ -905,7 +1044,7 @@ window.generateAgreement = function() {
   setTxt(doc, [150,170,200]);
   doc.text('1750 HWY 160 W, STE #101-244, FORT MILL, SC 29708', M, 32);
   doc.text('PH: 888.447.7059', M, 40);
-  setTxt(doc, C.blue); doc.text('SALES@TRAXXISGPS.COM', M, 48);
+  setTxt(doc, [100,160,230]); doc.text('SALES@TRAXXISGPS.COM', M, 48);
   setTxt(doc, [150,170,200]); doc.text(d.orderLabel, M, 60);
 
   var rx = W-M;
@@ -916,7 +1055,7 @@ window.generateAgreement = function() {
   setTxt(doc, [150,170,200]);
   doc.text('114 E. MAIN ST., SUITE 201, ROCK HILL, SC 29730', rx, 32, {align:'right'});
   doc.text('PH: 888.447.7059', rx, 40, {align:'right'});
-  setTxt(doc, C.blue); doc.text('WWW.TRAXXISGPS.COM', rx, 48, {align:'right'});
+  setTxt(doc, [100,160,230]); doc.text('WWW.TRAXXISGPS.COM', rx, 48, {align:'right'});
 
   setFill(doc, C.blue); doc.rect(0, 85, W, 24, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(11); setTxt(doc, C.white);
@@ -1051,7 +1190,7 @@ window.generateAgreement = function() {
   agTotRow('EQUIPMENT SUBTOTAL', fmt(d.equipSub));
   agTotRow('TAX'+(d.taxRate>0?' ('+d.taxRate+'%)':' (N/A)'), d.taxRate>0?fmt(d.taxAmt):'$0.00');
   agTotRow('DEPOSIT (2 MO. ACCESS PLAN)', fmt(d.deposit));
-  agTotRow('TOTAL AMOUNT DUE', fmt(d.total), true, [10,90,170]);
+  agTotRow('TOTAL AMOUNT DUE', fmt(d.total), true, [10,60,140]);
   agTotRow('DOWN PAYMENT', '$0.00');
   agTotRow('BALANCE DUE', fmt(d.total), true, C.text);
   y = Math.max(y, notesStartY + (d.notes ? Math.min(doc.splitTextToSize(d.notes, W/2-M-14).length, 6) * 11 + 16 : 0));
@@ -1103,7 +1242,7 @@ window.generateAgreement = function() {
   setFill(doc, C.orange); doc.rect(0, 39, W, 4, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(10); setTxt(doc, C.white);
   doc.text('TRAXXIS GPS SOLUTIONS — COMMERCIAL SALES AND SERVICE AGREEMENT', W/2, 22, {align:'center'});
-  doc.setFontSize(8); setTxt(doc, C.blue);
+  doc.setFontSize(8); setTxt(doc, [150,190,240]);
   doc.text('TERMS AND CONDITIONS', W/2, 34, {align:'center'});
 
   var terms = [
@@ -1149,9 +1288,14 @@ window.generateAgreement = function() {
   }
 
   addPdfFooter(doc, W, H, M);
-  saveProposalRecord('Agreement');
   doc.save((d.company||'Agreement').replace(/[^a-z0-9]/gi,'_')+'_Agreement.pdf');
   toast('Agreement PDF downloaded!');
+}
+
+window.generateAgreement = function() {
+  var d = getQuoteData();
+  saveProposalRecord('Agreement');
+  generateAgreementFromData(d);
 };
 
 // ============================================================
@@ -1160,3 +1304,8 @@ window.generateAgreement = function() {
 document.querySelectorAll('.modal-overlay').forEach(function(o){
   o.addEventListener('click', function(e){ if(e.target===this) closeModal(this.id); });
 });
+
+// ============================================================
+// BOOT
+// ============================================================
+initAuth();
