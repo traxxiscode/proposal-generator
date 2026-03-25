@@ -57,6 +57,40 @@ var DEFAULT_PLANS = [
   {id:4,name:'Asset Tracking Plan',desc:'Non-powered asset tracking (trailers, equipment)',rate:9.99}
 ];
 
+function getRecordSignature(data) {
+  return [
+    data.company, data.contact, data.email, data.address, data.city, data.state, data.zip, data.phone,
+    data.paymentTerms, data.contractTerm, data.orderType, data.total, data.monthly,
+    JSON.stringify(data.equipment || []), JSON.stringify(data.plans || [])
+  ].join('|');
+}
+
+function normalizeProposalHistoryRecords(items) {
+  var merged = [];
+  var bySig = {};
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var sig = item.signature || getRecordSignature(item);
+    if (!bySig[sig]) {
+      item.signature = sig;
+      item.hasProposal = item.hasProposal || item.docType === 'Proposal';
+      item.hasAgreement = item.hasAgreement || item.docType === 'Agreement';
+      bySig[sig] = item;
+      merged.push(item);
+    } else {
+      var existing = bySig[sig];
+      existing.hasProposal = existing.hasProposal || item.hasProposal || item.docType === 'Proposal';
+      existing.hasAgreement = existing.hasAgreement || item.hasAgreement || item.docType === 'Agreement';
+      if ((item.timestamp || 0) > (existing.timestamp || 0)) {
+        existing.timestamp = item.timestamp;
+        existing.date = item.date;
+        existing.id = existing.id || item.id;
+      }
+    }
+  }
+  return merged.sort(function(a, b){ return (b.timestamp || 0) - (a.timestamp || 0); });
+}
+
 // ============================================================
 // CRYPTO HELPERS — Web Crypto API (SHA-256 + random salt)
 // ============================================================
@@ -283,7 +317,7 @@ async function loadData(adminMode) {
 async function loadProposals() {
   try {
     var snap = await getDoc(doc(db, COLLECTION, 'proposals_list'));
-    proposalHistory = snap.exists() ? (snap.data().items || []) : [];
+    proposalHistory = snap.exists() ? normalizeProposalHistoryRecords(snap.data().items || []) : [];
     autoPurgeProposals();
   } catch(e) { proposalHistory = []; }
 }
@@ -298,6 +332,7 @@ async function saveData() {
 async function saveProposalHistory() {
   try {
     if (proposalHistory.length > 500) proposalHistory = proposalHistory.slice(0, 500);
+    proposalHistory = normalizeProposalHistoryRecords(proposalHistory);
     await setDoc(doc(db, COLLECTION, 'proposals_list'), { items: proposalHistory });
   } catch(e) { console.error('Error saving proposals:', e); toast('Save failed', true); }
 }
@@ -345,12 +380,30 @@ function fmt(n) {
 function saveProposalRecord(docType) {
   var d = getQuoteData();
   if (!d.company) return;
-  var reuseExisting = editingRecordId && editingRecordType === docType;
+  var signature = [
+    d.company, d.contact, d.email, d.address, d.city, d.state, d.zip, d.phone,
+    d.paymentTerms, d.contractTerm, d.orderType, d.total, d.monthly,
+    JSON.stringify(d.equipment), JSON.stringify(d.plans)
+  ].join('|');
+  var existingIndex = -1;
+  if (editingRecordId) {
+    for (var i = 0; i < proposalHistory.length; i++) {
+      if (proposalHistory[i].id === editingRecordId) { existingIndex = i; break; }
+    }
+  }
+  if (existingIndex === -1) {
+    for (var j = 0; j < proposalHistory.length; j++) {
+      if ((proposalHistory[j].signature || '') === signature) { existingIndex = j; break; }
+    }
+  }
+  var existing = existingIndex >= 0 ? proposalHistory[existingIndex] : null;
   var record = {
-    id: reuseExisting ? editingRecordId : Date.now(),
+    id: existing ? existing.id : Date.now(),
     timestamp: Date.now(),
     date: new Date().toLocaleDateString('en-US'),
-    docType: docType,
+    signature: signature,
+    hasProposal: existing ? !!existing.hasProposal : false,
+    hasAgreement: existing ? !!existing.hasAgreement : false,
     // Full data for PDF regeneration
     company: d.company,
     contact: d.contact,
@@ -382,16 +435,15 @@ function saveProposalRecord(docType) {
     deposit: d.deposit,
     total: d.total
   };
-  if (reuseExisting) {
-    for (var i = 0; i < proposalHistory.length; i++) {
-      if (proposalHistory[i].id === editingRecordId) {
-        proposalHistory[i] = record;
-        break;
-      }
-    }
+  if (docType === 'Proposal') record.hasProposal = true;
+  if (docType === 'Agreement') record.hasAgreement = true;
+  if (existingIndex >= 0) {
+    proposalHistory[existingIndex] = record;
   } else {
     proposalHistory.unshift(record);
   }
+  editingRecordId = record.id;
+  editingRecordType = docType;
   if (isAdmin) saveProposalHistory();
 }
 
@@ -406,7 +458,7 @@ function renderHistory() {
   var filtered = proposalHistory.filter(function(p) {
     if (!search) return true;
     return [
-      p.company, p.contact, p.docType, p.orderLabel, p.email, p.phone, p.rep, p.date
+      p.company, p.contact, p.orderLabel, p.email, p.phone, p.rep, p.date
     ].join(' ').toLowerCase().indexOf(search) >= 0;
   });
   if (filtered.length === 0) {
@@ -421,12 +473,10 @@ function renderHistory() {
     var p = filtered[i];
     var age = Math.floor((Date.now() - p.timestamp) / (24*60*60*1000));
     var dotClass = age < 30 ? 'green' : (age < 60 ? 'blue' : 'orange');
-    var docBadge = p.docType === 'Proposal' ? 'badge-blue' : 'badge-orange';
     html += '<tr>';
     html += '<td><span class="status-dot '+dotClass+'"></span>'+p.date+'<br><span style="font-size:10px;color:var(--muted)">'+age+'d ago</span></td>';
     html += '<td style="font-weight:600">'+p.company+'</td>';
     html += '<td>'+p.contact+'</td>';
-    html += '<td><span class="badge '+docBadge+'">'+p.docType+'</span></td>';
     html += '<td class="price-cell">'+fmt(p.total)+'</td>';
     html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
     html += '<td><div class="history-actions">';
@@ -451,7 +501,7 @@ function findSavedRecord(id) {
 
 function setQuoteFormFromRecord(p) {
   editingRecordId = p.id;
-  editingRecordType = p.docType;
+  editingRecordType = p.hasAgreement && !p.hasProposal ? 'Agreement' : 'Proposal';
   document.getElementById('q-company').value = p.company || '';
   document.getElementById('q-contact').value = p.contact || '';
   document.getElementById('q-title').value = p.title || '';
@@ -484,7 +534,7 @@ function setQuoteFormFromRecord(p) {
   renderPlanGrid();
   updateTotals();
   showPage('quote');
-  toast('Loaded saved ' + p.docType.toLowerCase() + ' for editing');
+  toast('Loaded saved quote for editing');
 }
 
 window.editSavedRecord = function(id) {
