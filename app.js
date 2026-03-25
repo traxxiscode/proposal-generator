@@ -180,7 +180,7 @@ async function bootAsGuest() {
 function updateAdminUI() {
   // Topbar badges
   document.getElementById('admin-mode-badge').style.display = isAdmin ? 'inline-flex' : 'none';
-  document.getElementById('guest-mode-badge').style.display = !isAdmin ? 'inline-block' : 'none';
+  document.getElementById('guest-mode-badge').style.display = !isAdmin ? 'inline-flex' : 'none';
 
   // Admin-gated pages
   document.getElementById('admin-only-msg').style.display = isAdmin ? 'none' : 'block';
@@ -189,12 +189,12 @@ function updateAdminUI() {
   document.getElementById('history-content').style.display = isAdmin ? 'block' : 'none';
 
   // Status bar
-  var statusEl = document.getElementById('storage-status');
+  var statusEl = document.getElementById('mode-status-text');
   if (statusEl) {
     if (isAdmin) {
-      statusEl.innerHTML = '<span class="status-dot green"></span> Firebase — Admin';
+      statusEl.innerHTML = '<span class="status-dot green"></span> Admin access enabled';
     } else {
-      statusEl.innerHTML = '<span class="status-dot blue"></span> Firebase — Guest';
+      statusEl.innerHTML = '<span class="status-dot blue"></span> Guest access';
     }
   }
 }
@@ -386,32 +386,52 @@ function saveProposalRecord(docType) {
 
 function renderHistory() {
   if (!isAdmin) return;
-  var tbody = document.getElementById('history-tbody');
-  var table = document.getElementById('history-table');
+  var proposalsTbody = document.getElementById('history-proposals-tbody');
+  var agreementsTbody = document.getElementById('history-agreements-tbody');
+  var proposalsTable = document.getElementById('history-proposals-table');
+  var agreementsTable = document.getElementById('history-agreements-table');
+  var tablesWrap = document.getElementById('history-tables');
   var empty = document.getElementById('history-empty');
-  if (!tbody) return;
-  if (proposalHistory.length === 0) { table.style.display = 'none'; empty.style.display = 'block'; return; }
-  table.style.display = 'table'; empty.style.display = 'none';
-  var html = '';
-  for (var i = 0; i < proposalHistory.length; i++) {
-    var p = proposalHistory[i];
-    var age = Math.floor((Date.now() - p.timestamp) / (24*60*60*1000));
-    var dotClass = age < 30 ? 'green' : (age < 60 ? 'blue' : 'orange');
-    var typeColor = p.docType === 'Agreement' ? 'badge-orange' : 'badge-blue';
-    html += '<tr>';
-    html += '<td><span class="status-dot '+dotClass+'"></span>'+p.date+'<br><span style="font-size:10px;color:var(--muted)">'+age+'d ago</span></td>';
-    html += '<td style="font-weight:600">'+p.company+'</td>';
-    html += '<td>'+p.contact+'</td>';
-    html += '<td><span class="badge badge-blue">'+p.orderLabel+'</span></td>';
-    html += '<td class="price-cell">'+fmt(p.total)+'</td>';
-    html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
-    html += '<td><span class="badge '+typeColor+'">'+p.docType+'</span></td>';
-    html += '<td style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-download btn-sm" onclick="redownloadProposal('+p.id+')">⬇ PDF</button><button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">✕</button></td>';
-    html += '</tr>';
+  if (!proposalsTbody || !agreementsTbody) return;
+  if (proposalHistory.length === 0) {
+    tablesWrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
   }
-  tbody.innerHTML = html;
-}
+  tablesWrap.style.display = 'block';
+  empty.style.display = 'none';
 
+  var proposals = proposalHistory.filter(function(p){ return p.docType === 'Proposal'; });
+  var agreements = proposalHistory.filter(function(p){ return p.docType === 'Agreement'; });
+
+  function buildRows(items) {
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var p = items[i];
+      var age = Math.floor((Date.now() - p.timestamp) / (24*60*60*1000));
+      var dotClass = age < 30 ? 'green' : (age < 60 ? 'blue' : 'orange');
+      html += '<tr>';
+      html += '<td><span class="status-dot '+dotClass+'"></span>'+p.date+'<br><span style="font-size:10px;color:var(--muted)">'+age+'d ago</span></td>';
+      html += '<td style="font-weight:600">'+p.company+'</td>';
+      html += '<td>'+p.contact+'</td>';
+      html += '<td><span class="badge badge-blue">'+p.orderLabel+'</span></td>';
+      html += '<td class="price-cell">'+fmt(p.total)+'</td>';
+      html += '<td class="price-cell" style="color:var(--orange)">'+fmt(p.monthly)+'/mo</td>';
+      html += '<td style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn btn-download btn-sm" onclick="redownloadProposal('+p.id+')">PDF</button><button class="btn btn-danger btn-sm" onclick="deleteProposal('+p.id+')">Delete</button></td>';
+      html += '</tr>';
+    }
+    return html;
+  }
+
+  document.getElementById('history-proposals-count').textContent = proposals.length + (proposals.length === 1 ? ' record' : ' records');
+  document.getElementById('history-agreements-count').textContent = agreements.length + (agreements.length === 1 ? ' record' : ' records');
+  proposalsTable.style.display = proposals.length ? 'table' : 'none';
+  agreementsTable.style.display = agreements.length ? 'table' : 'none';
+  document.getElementById('history-proposals-empty').style.display = proposals.length ? 'none' : 'block';
+  document.getElementById('history-agreements-empty').style.display = agreements.length ? 'none' : 'block';
+  proposalsTbody.innerHTML = buildRows(proposals);
+  agreementsTbody.innerHTML = buildRows(agreements);
+}
 window.redownloadProposal = function(id) {
   var p = null;
   for (var i = 0; i < proposalHistory.length; i++) { if (proposalHistory[i].id === id) { p = proposalHistory[i]; break; } }
@@ -845,18 +865,16 @@ function setTxt(doc, rgb) { doc.setTextColor(rgb[0], rgb[1], rgb[2]); }
 
 function drawPdfLogo(doc, x, y, scale) {
   scale = scale || 1;
-  // GPS pin / target icon
-  doc.setLineWidth(1.8*scale);
-  setStroke(doc, C.orange);
-  doc.circle(x+12*scale, y+12*scale, 5*scale, 'S');
   setFill(doc, C.orange);
-  doc.circle(x+12*scale, y+12*scale, 1.5*scale, 'F');
-  setStroke(doc, [180,200,230]);
-  doc.setLineWidth(1.2*scale);
-  doc.line(x+12*scale, y+3*scale, x+12*scale, y+6*scale);
-  doc.line(x+12*scale, y+18*scale, x+12*scale, y+21*scale);
-  doc.line(x+3*scale, y+12*scale, x+6*scale, y+12*scale);
-  doc.line(x+18*scale, y+12*scale, x+21*scale, y+12*scale);
+  doc.circle(x+12*scale, y+12*scale, 8*scale, 'F');
+  setFill(doc, C.dark);
+  doc.circle(x+12*scale, y+12*scale, 4.2*scale, 'F');
+  setFill(doc, C.orange);
+  doc.circle(x+12*scale, y+12*scale, 1.6*scale, 'F');
+  setStroke(doc, [255, 200, 138]);
+  doc.setLineWidth(1.1*scale);
+  doc.line(x+1*scale, y+12*scale, x+23*scale, y+12*scale);
+  doc.line(x+12*scale, y+1*scale, x+12*scale, y+23*scale);
   doc.setFont('helvetica','bold');
   doc.setFontSize(18*scale);
   setTxt(doc, C.white);
@@ -868,7 +886,6 @@ function drawPdfLogo(doc, x, y, scale) {
   setTxt(doc, [140, 160, 190]);
   doc.text('FLEET TRACKING SOLUTIONS', x+28*scale, y+22*scale);
 }
-
 function addPdfFooter(doc, W, H, M) {
   var n = doc.internal.getNumberOfPages();
   for (var i = 1; i <= n; i++) {
@@ -878,45 +895,87 @@ function addPdfFooter(doc, W, H, M) {
     setFill(doc, C.orange); doc.rect(0, fh, W, 3, 'F');
     doc.setFont('helvetica','normal'); doc.setFontSize(7);
     setTxt(doc, [120, 140, 170]);
-    doc.text('Traxxis GPS Solutions, Inc.  ·  114 E. Main St., Suite 201, Rock Hill, SC 29730  ·  888.447.7059  ·  www.traxxisgps.com', W/2, H-12, {align:'center'});
+    doc.text('Traxxis GPS Solutions, Inc. | 114 E. Main St., Suite 201, Rock Hill, SC 29730 | 888.447.7059 | www.traxxisgps.com', W/2, H-12, {align:'center'});
     setTxt(doc, [100, 130, 180]);
     doc.text('Page ' + i + ' of ' + n, W-M, H-12, {align:'right'});
     setTxt(doc, [80, 100, 130]);
     doc.text('CONFIDENTIAL', M, H-12);
   }
 }
-
 function checkPageBreak(doc, y, needed, H, M) {
-  if (y + needed > H - 40) { doc.addPage(); return 50; }
+  if (y + needed > H - 46) { doc.addPage(); return 54; }
   return y;
 }
-
+function addPdfPageHeader(doc, opts) {
+  var W = opts.W, title = opts.title, subtitle = opts.subtitle || '', rightLines = opts.rightLines || [], M = opts.M || 42;
+  setFill(doc, C.dark); doc.rect(0, 0, W, 88, 'F');
+  setFill(doc, C.orange); doc.rect(0, 84, W, 4, 'F');
+  setFill(doc, C.blue); doc.rect(0, 88, W, 2, 'F');
+  drawPdfLogo(doc, M, 24, 1.08);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); setTxt(doc, C.white);
+  doc.text(title, W - M, 34, {align:'right'});
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); setTxt(doc, [198, 210, 228]);
+  if (subtitle) doc.text(subtitle, W - M, 48, {align:'right'});
+  for (var i = 0; i < rightLines.length; i++) {
+    doc.text(rightLines[i], W - M, 62 + (i * 12), {align:'right'});
+  }
+}
+function addPdfInfoGrid(doc, startY, leftItems, rightItems, layout) {
+  var y = startY;
+  var leftX = layout.leftX, rightX = layout.rightX, colWidth = layout.colWidth;
+  function item(label, value, x, yy) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); setTxt(doc, C.muted);
+    doc.text(label, x, yy);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); setTxt(doc, value ? C.text : [190, 198, 210]);
+    var lines = doc.splitTextToSize(value || '-', colWidth);
+    doc.text(lines, x, yy + 12);
+    return Math.max(18, lines.length * 11 + 8);
+  }
+  for (var i = 0; i < Math.max(leftItems.length, rightItems.length); i++) {
+    var leftH = leftItems[i] ? item(leftItems[i].label, leftItems[i].value, leftX, y) : 18;
+    var rightH = rightItems[i] ? item(rightItems[i].label, rightItems[i].value, rightX, y) : 18;
+    y += Math.max(leftH, rightH);
+  }
+  return y;
+}
+function addPdfSummaryCard(doc, d, opts) {
+  var x = opts.x, y = opts.y, w = opts.w;
+  setFill(doc, C.dark); doc.roundedRect(x, y, w, 118, 8, 8, 'F');
+  setFill(doc, C.orange); doc.roundedRect(x, y, 5, 118, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); setTxt(doc, C.white);
+  doc.text('PRICING SUMMARY', x + 16, y + 18);
+  function row(label, value, yy, color, bold) {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFontSize(bold ? 10 : 8.5);
+    setTxt(doc, [210, 221, 238]);
+    doc.text(label, x + 16, yy);
+    doc.setTextColor.apply(doc, color || [232, 239, 249]);
+    doc.text(value, x + w - 14, yy, {align:'right'});
+  }
+  row('Equipment Subtotal', fmt(d.equipSub), y + 38);
+  row('Tax' + (d.taxRate > 0 ? ' (' + d.taxRate + '%)' : ' (N/A)'), d.taxRate > 0 ? fmt(d.taxAmt) : '$0.00', y + 54);
+  row('Deposit (2 months)', fmt(d.deposit), y + 70);
+  setStroke(doc, [50, 72, 108]); doc.setLineWidth(0.5); doc.line(x + 16, y + 78, x + w - 14, y + 78);
+  row('TOTAL DUE', fmt(d.total), y + 94, C.orange, true);
+  row('Monthly Total', fmt(d.monthly) + '/mo', y + 108, C.blue, true);
+  return y + 130;
+}
 // ============================================================
-// PROPOSAL PDF — works from either live form data or saved record
+// PROPOSAL PDF - works from either live form data or saved record
 // ============================================================
 function generateProposalFromData(d) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
   var W = 612, H = 792, M = 42;
-
-  setFill(doc, C.dark); doc.rect(0, 0, W, 90, 'F');
-  setFill(doc, C.orange); doc.rect(0, 87, W, 4, 'F');
-  setFill(doc, C.blue);   doc.rect(0, 91, W, 2, 'F');
-  drawPdfLogo(doc, M, 22, 1.1);
-
   var today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, [160,175,200]);
-  doc.text(today, W-M, 32, {align:'right'});
-  doc.text('GPS System: GEOTAB', W-M, 44, {align:'right'});
-  doc.text('888.447.7059  ·  www.traxxisgps.com', W-M, 56, {align:'right'});
-  doc.setFontSize(9); setTxt(doc, [180,200,225]);
-  doc.text(d.orderLabel, W-M, 72, {align:'right'});
-
-  setFill(doc, C.blue); doc.rect(0, 93, W, 26, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(12); setTxt(doc, C.white);
-  doc.text('COMMERCIAL SALES AND SERVICE PROPOSAL', W/2, 110, {align:'center'});
-
-  var y = 134;
+  addPdfPageHeader(doc, {
+    W: W,
+    M: M,
+    title: 'COMMERCIAL SALES AND SERVICE PROPOSAL',
+    subtitle: d.orderLabel,
+    rightLines: [today, 'GPS System: GEOTAB', '888.447.7059 | www.traxxisgps.com']
+  });
+  var y = 118;
   function secHdr(text, accent) {
     y = checkPageBreak(doc, y, 40, H, M);
     accent = accent || C.orange;
@@ -926,30 +985,29 @@ function generateProposalFromData(d) {
     doc.text(text, M+11, y+12);
     y += 22;
   }
-  function pField(label, val, x, yy, maxW) {
-    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); setTxt(doc, C.muted);
-    doc.text(label, x, yy);
-    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); setTxt(doc, val ? C.text : [200,200,200]);
-    var v = maxW ? doc.splitTextToSize(val||'—', maxW)[0] : (val||'—');
-    doc.text(v, x, yy+12);
-  }
-
   secHdr('CUSTOMER INFORMATION');
-  var L = M+4, R = W/2+12;
-  pField('COMPANY / BILL TO', d.company, L, y, W/2-M-16); pField('ATTENTION', d.contact+(d.title?', '+d.title:''), R, y, W/2-M-16); y+=26;
-  pField('ADDRESS', d.address, L, y, W/2-M-16); pField('CITY, STATE, ZIP', [d.city,d.state,d.zip].filter(Boolean).join(', '), R, y, W/2-M-16); y+=26;
-  pField('TELEPHONE', d.phone, L, y, W/2-M-16); pField('EMAIL', d.email, R, y, W/2-M-16); y+=26;
-
+  y = addPdfInfoGrid(doc, y, [
+    {label:'COMPANY / BILL TO', value:d.company},
+    {label:'ADDRESS', value:d.address},
+    {label:'TELEPHONE', value:d.phone}
+  ], [
+    {label:'ATTENTION', value:d.contact + (d.title ? ', ' + d.title : '')},
+    {label:'CITY, STATE, ZIP', value:[d.city,d.state,d.zip].filter(Boolean).join(', ')},
+    {label:'EMAIL', value:d.email}
+  ], {
+    leftX: M + 4,
+    rightX: W / 2 + 12,
+    colWidth: W / 2 - M - 20
+  }) + 2;
   if (d.challenge) {
-    pField('CUSTOMER CHALLENGE / NEED', '', L, y, 0); y+=13;
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); setTxt(doc, C.muted);
+    doc.text('CUSTOMER CHALLENGE / NEED', M + 4, y);
+    y += 14;
     doc.setFont('helvetica','italic'); doc.setFontSize(9); setTxt(doc, [85,100,120]);
-    var clines = doc.splitTextToSize(d.challenge, W-2*M-10);
-    if (clines.length > 3) clines = clines.slice(0,3);
-    doc.text(clines, L, y); y += clines.length*12 + 8;
+    doc.text(doc.splitTextToSize(d.challenge, W-2*M-10), M + 4, y);
+    y += doc.splitTextToSize(d.challenge, W-2*M-10).length * 12 + 10;
   }
-
   setStroke(doc, [220,228,240]); doc.setLineWidth(0.5); doc.line(M, y+2, W-M, y+2); y+=10;
-
   if (d.equipment.length > 0) {
     secHdr('EQUIPMENT DETAILS');
     doc.autoTable({
@@ -957,21 +1015,20 @@ function generateProposalFromData(d) {
       head: [['QTY','DESCRIPTION','UNIT PRICE','EXT. PRICE']],
       body: d.equipment.map(function(e){return[e.qty, e.desc, fmt(e.unitPrice), fmt(e.unitPrice*e.qty)];}),
       headStyles: {fillColor:C.mid, textColor:[255,255,255], fontSize:7.5, fontStyle:'bold', cellPadding:{top:6,bottom:6,left:8,right:8}},
-      bodyStyles: {fontSize:9, cellPadding:{top:6,bottom:6,left:8,right:8}, textColor:C.text},
+      bodyStyles: {fontSize:9, cellPadding:{top:6,bottom:6,left:8,right:8}, textColor:C.text, valign:'middle'},
       columnStyles: {0:{cellWidth:36,halign:'center'}, 2:{cellWidth:80,halign:'right'}, 3:{cellWidth:82,halign:'right'}},
       alternateRowStyles: {fillColor:[249,252,255]},
-      styles: {lineColor:[220,228,240], lineWidth:0.5}
+      styles: {lineColor:[220,228,240], lineWidth:0.5, overflow:'linebreak'}
     });
-    y = doc.lastAutoTable.finalY + 5;
-    setFill(doc, [236,242,252]); doc.rect(W-M-210, y, 210, 20, 'F');
+    y = doc.lastAutoTable.finalY + 8;
+    setFill(doc, [236,242,252]); doc.rect(W-M-210, y, 210, 22, 'F');
     doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, [90,110,140]);
-    doc.text('TERMS: '+d.paymentTerms, M, y+13);
+    doc.text('TERMS: '+d.paymentTerms, M, y+14);
     doc.setFont('helvetica','bold'); setTxt(doc, C.mid);
-    doc.text('EQUIPMENT SUBTOTAL', W-M-200, y+13);
-    setTxt(doc, C.orange); doc.text(fmt(d.equipSub), W-M-6, y+13, {align:'right'});
-    y += 28;
+    doc.text('EQUIPMENT SUBTOTAL', W-M-200, y+14);
+    setTxt(doc, C.orange); doc.text(fmt(d.equipSub), W-M-8, y+14, {align:'right'});
+    y += 32;
   }
-
   if (d.plans.length > 0) {
     y = checkPageBreak(doc, y, 120, H, M);
     secHdr('MONTHLY ACCESS PLAN DETAILS', C.blue);
@@ -980,113 +1037,61 @@ function generateProposalFromData(d) {
       head: [['QTY','PLAN NAME','MONTHLY RATE','TOTAL/MO']],
       body: d.plans.map(function(p){return[p.qty, p.name, fmt(p.rate), fmt(p.rate*p.qty)];}),
       headStyles: {fillColor:C.mid, textColor:[255,255,255], fontSize:7.5, fontStyle:'bold', cellPadding:{top:6,bottom:6,left:8,right:8}},
-      bodyStyles: {fontSize:9, cellPadding:{top:6,bottom:6,left:8,right:8}, textColor:C.text},
+      bodyStyles: {fontSize:9, cellPadding:{top:6,bottom:6,left:8,right:8}, textColor:C.text, valign:'middle'},
       columnStyles: {0:{cellWidth:36,halign:'center'}, 2:{cellWidth:90,halign:'right'}, 3:{cellWidth:90,halign:'right'}},
       alternateRowStyles: {fillColor:[249,252,255]},
-      styles: {lineColor:[220,228,240], lineWidth:0.5}
+      styles: {lineColor:[220,228,240], lineWidth:0.5, overflow:'linebreak'}
     });
-    y = doc.lastAutoTable.finalY + 5;
-    setFill(doc, [236,242,252]); doc.rect(W-M-210, y, 210, 20, 'F');
+    y = doc.lastAutoTable.finalY + 8;
+    setFill(doc, [236,242,252]); doc.rect(W-M-210, y, 210, 22, 'F');
     doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, [90,110,140]);
-    doc.text('COMMITMENT: '+d.termLabel.toUpperCase(), M, y+13);
+    doc.text('COMMITMENT: '+d.termLabel.toUpperCase(), M, y+14);
     doc.setFont('helvetica','bold'); setTxt(doc, C.mid);
-    doc.text('MONTHLY TOTAL', W-M-200, y+13);
-    setTxt(doc, C.orange); doc.text(fmt(d.monthly)+'/mo', W-M-6, y+13, {align:'right'});
+    doc.text('MONTHLY TOTAL', W-M-200, y+14);
+    setTxt(doc, C.orange); doc.text(fmt(d.monthly)+'/mo', W-M-8, y+14, {align:'right'});
     if (d.usedMin) {
       doc.setFont('helvetica','italic'); doc.setFontSize(7); setTxt(doc, [160,100,50]);
-      doc.text('* Safety Platform Fee applied', W-M-6, y+22, {align:'right'});
+      doc.text('* Safety Platform Fee applied', W-M-8, y+30, {align:'right'});
     }
-    y += d.usedMin ? 36 : 28;
+    y += d.usedMin ? 40 : 32;
   }
-
-  var boxH = d.notes ? 155 : 145;
-  y = checkPageBreak(doc, y, boxH + 20, H, M);
-  var bx = W-M-230, bw = 230;
-  setFill(doc, C.dark); doc.roundedRect(bx, y, bw, boxH, 6, 6, 'F');
-  setFill(doc, C.orange); doc.roundedRect(bx, y, 4, boxH, 2, 2, 'F');
-  var tx = bx + 14, tr = bx + bw - 10;
-  function totLine(label, val, ty, big, vc) {
-    doc.setFont('helvetica', big ? 'bold' : 'normal');
-    doc.setFontSize(big ? 10 : 8.5);
-    setTxt(doc, [130, 150, 185]);
-    doc.text(label, tx, ty);
-    doc.setTextColor.apply(doc, vc || [215, 228, 248]);
-    doc.text(val, tr, ty, {align:'right'});
-  }
-  totLine('Equipment Subtotal', fmt(d.equipSub), y+20);
-  totLine('Tax'+(d.taxRate>0?' ('+d.taxRate+'%)':' (N/A)'), d.taxRate>0?fmt(d.taxAmt):'$0.00', y+35);
-  totLine('Deposit — 2 Month Access Plan', fmt(d.deposit), y+50);
-  setStroke(doc, [45,60,90]); doc.setLineWidth(0.6); doc.line(tx, y+57, tr, y+57);
-  totLine('TOTAL AMOUNT DUE', fmt(d.total), y+72, true, C.blue);
-  doc.setLineWidth(0.4); doc.line(tx, y+79, tr, y+79);
-  totLine('Monthly Total', fmt(d.monthly)+'/mo', y+94, false, C.orange);
-  if (d.usedMin) {
-    doc.setFont('helvetica','italic'); doc.setFontSize(6.5); setTxt(doc, [160,100,50]);
-    doc.text('* Safety Platform Fee', tr, y+106, {align:'right'});
-  }
-  setTxt(doc, [60,80,115]);
-  doc.setFont('helvetica','normal'); doc.setFontSize(7);
-  doc.text('Contract: '+d.termLabel+'  ·  '+d.orderLabel, tx, y+boxH-10);
+  var summaryY = y + 6;
   if (d.notes) {
+    y = checkPageBreak(doc, y, 170, H, M);
+    summaryY = y + 6;
     doc.setFont('helvetica','bold'); doc.setFontSize(8.5); setTxt(doc, C.mid);
-    doc.text('NOTES:', M, y+14);
+    doc.text('NOTES', M, summaryY + 14);
     doc.setFont('helvetica','normal'); doc.setFontSize(8.5); setTxt(doc, [85,100,120]);
-    var maxNoteW = bx - M - 14;
-    var nl = doc.splitTextToSize(d.notes, maxNoteW);
-    var maxLines = Math.floor((boxH - 30) / 12);
-    if (nl.length > maxLines) nl = nl.slice(0, maxLines);
-    doc.text(nl, M, y+28);
+    doc.text(doc.splitTextToSize(d.notes, 280), M, summaryY + 30);
   }
-
+  addPdfSummaryCard(doc, d, {x: W - M - 224, y: summaryY, w: 224});
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.2); setTxt(doc, [60,80,115]);
+  doc.text('Contract: ' + d.termLabel + ' | ' + d.orderLabel, W - M - 210, summaryY + 142);
   addPdfFooter(doc, W, H, M);
   doc.save((d.company||'Proposal').replace(/[^a-z0-9]/gi,'_')+'_Proposal.pdf');
   toast('Proposal PDF downloaded!');
 }
-
 window.generateProposal = function() {
   var d = getQuoteData();
   saveProposalRecord('Proposal');
   generateProposalFromData(d);
 };
-
 // ============================================================
-// AGREEMENT PDF — works from either live form data or saved record
+// AGREEMENT PDF - works from either live form data or saved record
 // ============================================================
 function generateAgreementFromData(d) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
-  var W = 612, H = 792, M = 36;
-
-  setFill(doc, C.dark); doc.rect(0, 0, W, 82, 'F');
-  setFill(doc, C.orange); doc.rect(0, 79, W, 4, 'F');
-  setFill(doc, C.blue);   doc.rect(0, 83, W, 2, 'F');
-  drawPdfLogo(doc, W/2-65, 18, 1.05);
-
-  doc.setFont('helvetica','bold'); doc.setFontSize(5.8); setTxt(doc, [100,120,155]);
-  doc.text('REMIT TO:', M, 16);
-  doc.setFont('helvetica','normal'); doc.setFontSize(6.5); setTxt(doc, C.orange);
-  doc.text('TRAXXIS GPS SOLUTIONS, INC.', M, 24);
-  setTxt(doc, [150,170,200]);
-  doc.text('1750 HWY 160 W, STE #101-244, FORT MILL, SC 29708', M, 32);
-  doc.text('PH: 888.447.7059', M, 40);
-  setTxt(doc, [100,160,230]); doc.text('SALES@TRAXXISGPS.COM', M, 48);
-  setTxt(doc, [150,170,200]); doc.text(d.orderLabel, M, 60);
-
-  var rx = W-M;
-  doc.setFont('helvetica','bold'); doc.setFontSize(5.8); setTxt(doc, [100,120,155]);
-  doc.text('CORPORATE:', rx, 16, {align:'right'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(6.5); setTxt(doc, C.orange);
-  doc.text('TRAXXIS GPS SOLUTIONS, INC.', rx, 24, {align:'right'});
-  setTxt(doc, [150,170,200]);
-  doc.text('114 E. MAIN ST., SUITE 201, ROCK HILL, SC 29730', rx, 32, {align:'right'});
-  doc.text('PH: 888.447.7059', rx, 40, {align:'right'});
-  setTxt(doc, [100,160,230]); doc.text('WWW.TRAXXISGPS.COM', rx, 48, {align:'right'});
-
-  setFill(doc, C.blue); doc.rect(0, 85, W, 24, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); setTxt(doc, C.white);
-  doc.text('COMMERCIAL SALES AND SERVICE AGREEMENT', W/2, 101, {align:'center'});
-
-  var y = 118;
+  var W = 612, H = 792, M = 38;
+  var today = new Date().toLocaleDateString('en-US');
+  addPdfPageHeader(doc, {
+    W: W,
+    M: M,
+    title: 'COMMERCIAL SALES AND SERVICE AGREEMENT',
+    subtitle: d.orderLabel,
+    rightLines: [today, 'Traxxis GPS Solutions, Inc.', '888.447.7059 | www.traxxisgps.com']
+  });
+  var y = 116;
   function aSecHdr(text, accentColor) {
     y = checkPageBreak(doc, y, 38, H, M);
     accentColor = accentColor || C.orange;
@@ -1096,121 +1101,93 @@ function generateAgreementFromData(d) {
     doc.text(text, M+10, y+11);
     y += 19;
   }
-  function aField(label, val, x, yy) {
-    doc.setFont('helvetica','bold'); doc.setFontSize(5.8); setTxt(doc, C.muted);
-    doc.text(label+':', x, yy);
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, val ? C.text : [200,200,200]);
-    doc.text(val||'—', x, yy+9);
-  }
-
   aSecHdr('CUSTOMER DETAILS');
-  var today = new Date().toLocaleDateString('en-US');
-  aField('Order Date', today, M+4, y);
-  aField('Type', ({new:'NEW',addon:'ADD-ON',renewal:'RENEWAL'})[d.orderType]||'NEW', M+88, y);
-  aField('Rep', d.rep, M+155, y);
-  aField('GPS System', 'GEOTAB', W-M-95, y);
-  y += 20;
-  setStroke(doc, [218,228,245]); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 5;
-
-  var LL = M+4, RR = W/2+8;
-  aField('Bill To', d.company, LL, y); aField('Ship To', d.company, RR, y); y+=20;
-  aField('Attention', d.contact, LL, y); aField('Attention', d.contact, RR, y); y+=20;
-  aField('Address', d.address, LL, y); aField('Address', d.address, RR, y); y+=20;
-  aField('City', d.city, LL, y); aField('State', d.state, LL+82, y); aField('ZIP', d.zip, LL+132, y);
-  aField('City', d.city, RR, y); aField('State', d.state, RR+82, y); aField('ZIP', d.zip, RR+132, y); y+=20;
-  aField('Telephone', d.phone, LL, y); aField('Email', d.email, RR, y); y+=18;
-  doc.line(M, y, W-M, y); y+=5;
-
+  y = addPdfInfoGrid(doc, y, [
+    {label:'ORDER DATE', value:today},
+    {label:'BILL TO', value:d.company},
+    {label:'ATTENTION', value:d.contact},
+    {label:'ADDRESS', value:d.address},
+    {label:'TELEPHONE', value:d.phone}
+  ], [
+    {label:'TYPE', value:({new:'NEW',addon:'ADD-ON',renewal:'RENEWAL'})[d.orderType]||'NEW'},
+    {label:'SHIP TO', value:d.company},
+    {label:'TITLE', value:d.title},
+    {label:'CITY, STATE, ZIP', value:[d.city,d.state,d.zip].filter(Boolean).join(', ')},
+    {label:'EMAIL', value:d.email}
+  ], {
+    leftX: M + 4,
+    rightX: W / 2 + 10,
+    colWidth: W / 2 - M - 18
+  });
+  setStroke(doc, [218,228,245]); doc.setLineWidth(0.5); doc.line(M, y, W-M, y); y += 7;
   aSecHdr('EQUIPMENT DETAILS');
   doc.setFont('helvetica','normal'); doc.setFontSize(7); setTxt(doc, [110,128,155]);
-  doc.text('Billed by: ', W/2-30, y+6);
+  doc.text('Billed by:', W/2-26, y+6);
   doc.setFontSize(8.5); setTxt(doc, C.orange);
   doc.text('TRAXXIS GPS SOLUTIONS, INC.', W/2+10, y+6);
   y += 14;
-
-  setFill(doc, C.mid); doc.rect(M, y, W-2*M, 15, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(7); setTxt(doc, C.white);
-  doc.text('QTY', M+4, y+10); doc.text('DESCRIPTION', M+36, y+10);
-  doc.text('UNIT PRICE', W-210, y+10, {align:'right'});
-  doc.text('EXT PRICE', W-140, y+10, {align:'right'});
-  doc.text('FINANCE', W-M-4, y+10, {align:'right'});
-  y += 17;
-
-  for (var i=0; i<d.equipment.length; i++) {
-    y = checkPageBreak(doc, y, 16, H, M);
-    var e = d.equipment[i];
-    if (i%2===1){setFill(doc,[248,252,255]);doc.rect(M,y-2,W-2*M,14,'F');}
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, C.text);
-    doc.text(String(e.qty), M+12, y+7, {align:'center'});
-    doc.text(e.desc.substring(0,58), M+36, y+7);
-    doc.text(fmt(e.unitPrice), W-210, y+7, {align:'right'});
-    doc.text(fmt(e.unitPrice*e.qty), W-140, y+7, {align:'right'});
-    y += 14;
-  }
-
+  doc.autoTable({
+    startY: y,
+    margin: {left:M, right:M},
+    head: [['QTY','DESCRIPTION','UNIT PRICE','EXT. PRICE']],
+    body: d.equipment.map(function(e){ return [e.qty, e.desc, fmt(e.unitPrice), fmt(e.unitPrice * e.qty)]; }),
+    headStyles: {fillColor:C.mid, textColor:[255,255,255], fontSize:7.5, fontStyle:'bold', cellPadding:{top:6,bottom:6,left:8,right:8}},
+    bodyStyles: {fontSize:8.8, cellPadding:{top:6,bottom:6,left:8,right:8}, textColor:C.text, valign:'middle'},
+    columnStyles: {0:{cellWidth:40, halign:'center'}, 2:{cellWidth:92, halign:'right'}, 3:{cellWidth:92, halign:'right'}},
+    alternateRowStyles: {fillColor:[249,252,255]},
+    styles: {lineColor:[220,228,240], lineWidth:0.5, overflow:'linebreak'}
+  });
+  y = doc.lastAutoTable.finalY + 8;
+  setFill(doc, [236,244,255]); doc.rect(W-M-176, y, 176, 20, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(8); setTxt(doc, C.mid);
-  doc.text('TERMS: '+d.paymentTerms.toUpperCase(), M+4, y+12);
-  setFill(doc, [236,244,255]); doc.rect(W-M-160, y, 160, 18, 'F');
-  doc.text('SUBTOTAL', W-M-150, y+12);
-  setTxt(doc, C.orange); doc.text(fmt(d.equipSub), W-M-4, y+12, {align:'right'});
-  y += 24;
-  doc.line(M, y, W-M, y); y += 5;
-
+  doc.text('TERMS: ' + d.paymentTerms.toUpperCase(), M+4, y+13);
+  doc.text('SUBTOTAL', W-M-166, y+13);
+  setTxt(doc, C.orange); doc.text(fmt(d.equipSub), W-M-8, y+13, {align:'right'});
+  y += 28;
+  doc.line(M, y, W-M, y); y += 7;
   aSecHdr('MONTHLY ACCESS PLAN DETAILS', C.blue);
   doc.setFont('helvetica','normal'); doc.setFontSize(7); setTxt(doc, [110,128,155]);
   doc.text('Monthly billing commences at activation or 30 days from signing, whichever comes first.', M+4, y+6);
   y += 14;
-
-  setFill(doc, C.mid); doc.rect(M, y, W-2*M, 15, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(7); setTxt(doc, C.white);
-  doc.text('QTY', M+4, y+10); doc.text('PLAN NAME', M+36, y+10);
-  doc.text('MONTHLY RATE', W-160, y+10, {align:'right'});
-  doc.text('TOTAL MONTHLY', W-M-4, y+10, {align:'right'});
-  y += 17;
-
-  for (var j=0; j<d.plans.length; j++) {
-    y = checkPageBreak(doc, y, 16, H, M);
-    var pl = d.plans[j];
-    if (j%2===1){setFill(doc,[248,252,255]);doc.rect(M,y-2,W-2*M,14,'F');}
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, C.text);
-    doc.text(String(pl.qty), M+12, y+7, {align:'center'});
-    doc.text(pl.name, M+36, y+7);
-    doc.text(fmt(pl.rate), W-160, y+7, {align:'right'});
-    doc.text(fmt(pl.rate*pl.qty), W-M-4, y+7, {align:'right'});
-    y += 14;
-  }
-
+  doc.autoTable({
+    startY: y,
+    margin: {left:M, right:M},
+    head: [['QTY','PLAN NAME','MONTHLY RATE','TOTAL / MO']],
+    body: d.plans.map(function(p){ return [p.qty, p.name, fmt(p.rate), fmt(p.rate * p.qty)]; }),
+    headStyles: {fillColor:C.mid, textColor:[255,255,255], fontSize:7.5, fontStyle:'bold', cellPadding:{top:6,bottom:6,left:8,right:8}},
+    bodyStyles: {fontSize:8.8, cellPadding:{top:6,bottom:6,left:8,right:8}, textColor:C.text},
+    columnStyles: {0:{cellWidth:40, halign:'center'}, 2:{cellWidth:92, halign:'right'}, 3:{cellWidth:92, halign:'right'}},
+    alternateRowStyles: {fillColor:[249,252,255]},
+    styles: {lineColor:[220,228,240], lineWidth:0.5, overflow:'linebreak'}
+  });
+  y = doc.lastAutoTable.finalY + 8;
   doc.setFont('helvetica','bold'); doc.setFontSize(8); setTxt(doc, C.mid);
-  doc.text('MINIMUM SERVICE COMMITMENT: '+(d.termLabel.toUpperCase()), M+4, y+12);
-  setFill(doc, [236,244,255]); doc.rect(W-M-175, y, 175, 18, 'F');
-  doc.text('MONTHLY TOTAL', W-M-165, y+12);
-  setTxt(doc, C.orange); doc.text(fmt(d.monthly)+'/mo', W-M-4, y+12, {align:'right'});
+  doc.text('MINIMUM SERVICE COMMITMENT: ' + d.termLabel.toUpperCase(), M+4, y+13);
+  setFill(doc, [236,244,255]); doc.rect(W-M-175, y, 175, 20, 'F');
+  doc.text('MONTHLY TOTAL', W-M-165, y+13);
+  setTxt(doc, C.orange); doc.text(fmt(d.monthly)+'/mo', W-M-8, y+13, {align:'right'});
   if (d.usedMin) {
     doc.setFont('helvetica','italic'); doc.setFontSize(6.5); setTxt(doc,[160,100,50]);
-    doc.text('* Safety Platform Fee applied', W-M-4, y+22, {align:'right'});
+    doc.text('* Safety Platform Fee applied', W-M-8, y+29, {align:'right'});
     y += 8;
   }
-  y += 24;
-  doc.line(M, y, W-M, y); y += 5;
-
+  y += 30;
+  doc.line(M, y, W-M, y); y += 7;
   aSecHdr('AGREEMENT DETAILS / NOTES');
-  var notesStartY = y;
+  var notesStartY = y + 2;
   if (d.notes) {
     doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, [85,100,120]);
-    var nl2 = doc.splitTextToSize(d.notes, W/2-M-14);
-    if (nl2.length > 6) nl2 = nl2.slice(0,6);
-    doc.text(nl2, M+4, notesStartY+10);
+    doc.text(doc.splitTextToSize(d.notes, W/2-M-20), M+4, notesStartY+10);
   }
-
   var ttx = W/2+8, ttw = W-M-ttx;
   function agTotRow(lbl, val, big, vc) {
-    setFill(doc, big ? [236,244,255] : [244,249,255]); doc.rect(ttx, y, ttw, 16, 'F');
-    setStroke(doc, [215,226,242]); doc.line(ttx, y+16, ttx+ttw, y+16);
+    setFill(doc, big ? [236,244,255] : [244,249,255]); doc.rect(ttx, y, ttw, 18, 'F');
+    setStroke(doc, [215,226,242]); doc.line(ttx, y+18, ttx+ttw, y+18);
     doc.setFont('helvetica', big ? 'bold' : 'normal'); doc.setFontSize(big ? 9 : 8);
     doc.setTextColor.apply(doc, vc || C.text);
-    doc.text(lbl, ttx+5, y+11);
-    doc.text(val, ttx+ttw-5, y+11, {align:'right'});
-    y += 16;
+    doc.text(lbl, ttx+6, y+12);
+    doc.text(val, ttx+ttw-6, y+12, {align:'right'});
+    y += 18;
   }
   agTotRow('EQUIPMENT SUBTOTAL', fmt(d.equipSub));
   agTotRow('TAX'+(d.taxRate>0?' ('+d.taxRate+'%)':' (N/A)'), d.taxRate>0?fmt(d.taxAmt):'$0.00');
@@ -1218,32 +1195,25 @@ function generateAgreementFromData(d) {
   agTotRow('TOTAL AMOUNT DUE', fmt(d.total), true, [10,60,140]);
   agTotRow('DOWN PAYMENT', '$0.00');
   agTotRow('BALANCE DUE', fmt(d.total), true, C.text);
-  y = Math.max(y, notesStartY + (d.notes ? Math.min(doc.splitTextToSize(d.notes, W/2-M-14).length, 6) * 11 + 16 : 0));
+  y = Math.max(y, notesStartY + (d.notes ? doc.splitTextToSize(d.notes, W/2-M-20).length * 10 + 18 : 0));
   y += 10;
-
   y = checkPageBreak(doc, y, 160, H, M);
-
-  // EUA notice
   setFill(doc, [255,252,242]); doc.rect(M, y, W-2*M, 17, 'F');
   setFill(doc, C.orange); doc.rect(M, y, 3, 17, 'F');
   doc.setFont('helvetica','italic'); doc.setFontSize(6.5); setTxt(doc, [120,100,70]);
   doc.text('Use of Geotab products is conditioned upon acceptance of the Geotab End User Agreement attached hereto.', M+8, y+11);
   y += 20;
-
-  // Acceptance text
   setFill(doc, [243,247,255]); doc.rect(M, y, W-2*M, 16, 'F');
   doc.setFont('helvetica','normal'); doc.setFontSize(6.2); setTxt(doc, [60,75,100]);
   doc.text('BY SIGNING, CUSTOMER ACCEPTS THIS AGREEMENT AND ALL PAYMENT TERMS. RIGHTS AND OBLIGATIONS ARE GOVERNED BY THE TRAXXIS GPS SOLUTIONS', M+4, y+7);
   doc.text('COMMERCIAL SALES AND SERVICE AGREEMENT TERMS AND CONDITIONS.', M+4, y+13);
   y += 20;
-
   function sigLine(lbl, val, x, yy, w) {
     setStroke(doc, [180,195,220]); doc.setLineWidth(0.5); doc.line(x, yy+15, x+w, yy+15);
     doc.setFont('helvetica','bold'); doc.setFontSize(5.8); setTxt(doc, [110,130,160]);
     doc.text(lbl+':', x, yy);
     if (val) { doc.setFont('helvetica','normal'); doc.setFontSize(8.5); setTxt(doc, C.text); doc.text(val, x, yy+11); }
   }
-
   var s1 = y + 4;
   var cw = (W-2*M)/4;
   sigLine('CUSTOMER', d.company, M, s1, cw-8);
@@ -1260,16 +1230,13 @@ function generateAgreementFromData(d) {
   var s4 = s3+26;
   sigLine('REP (SIGNATURE)', '', M, s4, hw);
   sigLine('DATE', today, M+hw+14, s4, hw);
-
-  // PAGE 2: TERMS & CONDITIONS
   doc.addPage();
   setFill(doc, C.dark); doc.rect(0, 0, W, 42, 'F');
   setFill(doc, C.orange); doc.rect(0, 39, W, 4, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(10); setTxt(doc, C.white);
-  doc.text('TRAXXIS GPS SOLUTIONS — COMMERCIAL SALES AND SERVICE AGREEMENT', W/2, 22, {align:'center'});
+  doc.text('TRAXXIS GPS SOLUTIONS - COMMERCIAL SALES AND SERVICE AGREEMENT', W/2, 22, {align:'center'});
   doc.setFontSize(8); setTxt(doc, [150,190,240]);
   doc.text('TERMS AND CONDITIONS', W/2, 34, {align:'center'});
-
   var terms = [
     {h:true,t:'1. TERMS AND CONDITIONS'},
     {h:false,t:'These Terms and Conditions are incorporated into the Traxxis GPS Solutions, Inc. Commercial Sales and Service Agreement. Traxxis GPS retains title to all Products until paid in full. Customer may cancel within 30 days of signing, subject to a 30% restocking fee.'},
@@ -1290,9 +1257,8 @@ function generateAgreementFromData(d) {
     {h:true,t:'9. MISCELLANEOUS'},
     {h:false,t:'This Agreement is governed by South Carolina law. Disputes shall be resolved in courts in Greenville County, SC. This constitutes the entire understanding between the parties. Confidential Information shall not be disclosed for five (5) years.'},
     {h:true,t:'CONTACT'},
-    {h:false,t:'Phone: 888.447.7059  |  Email: support@traxxisgps.com  |  114 East Main Street, Suite 201, Rock Hill, SC 29730'}
+    {h:false,t:'Phone: 888.447.7059 | Email: support@traxxisgps.com | 114 East Main Street, Suite 201, Rock Hill, SC 29730'}
   ];
-
   var ty = 56;
   for (var t=0; t<terms.length; t++) {
     if (ty > H-48) { doc.addPage(); ty = 42; }
@@ -1311,7 +1277,6 @@ function generateAgreementFromData(d) {
     }
     if (!item.h) ty += 3;
   }
-
   addPdfFooter(doc, W, H, M);
   doc.save((d.company||'Agreement').replace(/[^a-z0-9]/gi,'_')+'_Agreement.pdf');
   toast('Agreement PDF downloaded!');
@@ -1334,3 +1299,12 @@ document.querySelectorAll('.modal-overlay').forEach(function(o){
 // BOOT
 // ============================================================
 initAuth();
+
+
+
+
+
+
+
+
+

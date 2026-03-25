@@ -28,9 +28,11 @@
       <div class="auth-sub">No admin key found. Create one now to manage the product catalog and view saved proposals. This key will be required for admin access.</div>
       <div class="auth-error" id="setup-error"></div>
       <div class="auth-form">
-        <div class="form-group"><label>Admin Key</label><input type="password" id="setup-key" placeholder="Create a strong admin key" autocomplete="new-password"></div>
-        <div class="form-group"><label>Confirm Admin Key</label><input type="password" id="setup-key2" placeholder="Repeat admin key" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleSetupKey()"></div>
-        <button class="btn btn-orange" style="width:100%;justify-content:center;margin-top:6px" onclick="handleSetupKey()">Create Admin Key</button>
+        <div class="form-group"><label>Admin Key</label><input class="admin-auth-input" type="password" id="setup-key" placeholder="Create a strong admin key" autocomplete="new-password"></div>
+        <div class="form-group"><label>Confirm Admin Key</label><input class="admin-auth-input" type="password" id="setup-key2" placeholder="Repeat admin key" autocomplete="new-password" onkeydown="if(event.key==='Enter')handleSetupKey()"></div>
+        <div class="auth-actions">
+          <button class="btn btn-orange btn-lg" onclick="handleSetupKey()">Create Admin Key</button>
+        </div>
       </div>
       <div class="auth-divider">or</div>
       <button class="btn btn-outline auth-guest-btn" onclick="continueAsGuest()">Continue as Guest (read-only access)</button>
@@ -43,8 +45,10 @@
       <div class="auth-sub">Enter the admin key to access saved proposals, product catalog, and admin settings. Or continue as a guest to create proposals without saving.</div>
       <div class="auth-error" id="login-error"></div>
       <div class="auth-form">
-        <div class="form-group"><label>Admin Key</label><input type="password" id="login-key" placeholder="Enter admin key" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleAdminLogin()"></div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="handleAdminLogin()">Sign In as Admin</button>
+        <div class="form-group"><label>Admin Key</label><input class="admin-auth-input" type="password" id="login-key" placeholder="Enter admin key" autocomplete="current-password" onkeydown="if(event.key==='Enter')handleAdminLogin()"></div>
+        <div class="auth-actions">
+          <button class="btn btn-primary btn-lg" onclick="handleAdminLogin()">Sign In as Admin</button>
+        </div>
       </div>
       <div class="auth-divider">or</div>
       <button class="btn btn-outline auth-guest-btn" onclick="continueAsGuest()">Continue as Guest</button>
@@ -85,12 +89,10 @@
         <div class="topbar-divider"></div>
         <div><div class="topbar-title">Quote &amp; Proposal Generator</div><div class="topbar-sub">Build proposals &amp; agreements for customers</div></div>
       </div>
-      <div style="display:flex;align-items:center;gap:12px;">
-        <span id="admin-mode-badge" style="display:none" class="admin-mode-badge">🔐 Admin Mode &nbsp;<a href="#" onclick="handleAdminSignOut()" style="color:var(--orange-dark);font-weight:700;font-size:10px;text-decoration:none">Sign Out</a></span>
-        <span id="guest-mode-badge" style="display:none;font-size:11px;color:var(--muted)">Guest Mode &nbsp;<a href="#" onclick="showAdminLogin()" style="color:var(--blue);font-weight:600;font-size:11px;text-decoration:none">Sign In</a></span>
-        <span id="storage-status" style="font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:5px">
-          <span class="status-dot orange"></span> Connecting…
-        </span>
+      <div class="topbar-actions">
+        <span id="mode-status-text" class="mode-status"><span class="status-dot orange"></span> Checking access...</span>
+        <button id="guest-mode-badge" style="display:none" class="topbar-auth-btn guest" onclick="showAdminLogin()">Admin Sign In</button>
+        <button id="admin-mode-badge" style="display:none" class="topbar-auth-btn admin" onclick="handleAdminSignOut()">Admin Sign Out</button>
       </div>
     </div>
 
@@ -272,13 +274,33 @@
           </div>
           <div id="history-empty" class="empty-state">
             <div class="empty-icon">📁</div>
-            <div style="font-weight:600;margin-bottom:4px">No saved proposals yet</div>
+            <div style="font-weight:600;margin-bottom:4px">No saved documents yet</div>
             <div style="font-size:12px">Proposals and agreements will appear here after generation</div>
           </div>
-          <table class="admin-table" id="history-table" style="display:none">
-            <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Doc</th><th>Actions</th></tr></thead>
-            <tbody id="history-tbody"></tbody>
-          </table>
+          <div id="history-tables" style="display:none">
+            <div class="history-section">
+              <div class="history-section-title">
+                <h3>Saved Proposals</h3>
+                <span id="history-proposals-count">0 records</span>
+              </div>
+              <div id="history-proposals-empty" class="history-empty-mini" style="display:none">No saved proposals yet.</div>
+              <table class="admin-table" id="history-proposals-table" style="display:none">
+                <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Actions</th></tr></thead>
+                <tbody id="history-proposals-tbody"></tbody>
+              </table>
+            </div>
+            <div class="history-section">
+              <div class="history-section-title">
+                <h3>Saved Agreements</h3>
+                <span id="history-agreements-count">0 records</span>
+              </div>
+              <div id="history-agreements-empty" class="history-empty-mini" style="display:none">No saved agreements yet.</div>
+              <table class="admin-table" id="history-agreements-table" style="display:none">
+                <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Total Due</th><th>Monthly</th><th>Actions</th></tr></thead>
+                <tbody id="history-agreements-tbody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -400,7 +422,7 @@
   <div class="modal" style="max-width:400px;text-align:center">
     <div class="modal-title">Admin Sign In</div>
     <div class="auth-error" id="modal-admin-error"></div>
-    <div class="form-group" style="margin-bottom:20px;text-align:left"><label>Admin Key</label><input type="password" id="modal-admin-key" placeholder="Enter admin key" onkeydown="if(event.key==='Enter')handleModalAdminLogin()"></div>
+    <div class="form-group" style="margin-bottom:20px;text-align:left"><label>Admin Key</label><input class="admin-auth-input" type="password" id="modal-admin-key" placeholder="Enter admin key" onkeydown="if(event.key==='Enter')handleModalAdminLogin()"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="closeModal('modal-admin-login')">Cancel</button>
       <button class="btn btn-primary" onclick="handleModalAdminLogin()">Sign In</button>
@@ -414,9 +436,9 @@
     <div class="modal-title">Change Admin Key</div>
     <div class="auth-error" id="change-key-error"></div>
     <div class="auth-success" id="change-key-success"></div>
-    <div class="form-group" style="margin-bottom:14px"><label>Current Admin Key</label><input type="password" id="ck-current" placeholder="Current admin key"></div>
-    <div class="form-group" style="margin-bottom:14px"><label>New Admin Key</label><input type="password" id="ck-new" placeholder="New admin key"></div>
-    <div class="form-group" style="margin-bottom:20px"><label>Confirm New Key</label><input type="password" id="ck-new2" placeholder="Repeat new admin key"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>Current Admin Key</label><input class="admin-auth-input" type="password" id="ck-current" placeholder="Current admin key"></div>
+    <div class="form-group" style="margin-bottom:14px"><label>New Admin Key</label><input class="admin-auth-input" type="password" id="ck-new" placeholder="New admin key"></div>
+    <div class="form-group" style="margin-bottom:20px"><label>Confirm New Key</label><input class="admin-auth-input" type="password" id="ck-new2" placeholder="Repeat new admin key"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="closeModal('modal-change-key')">Cancel</button>
       <button class="btn btn-orange" onclick="handleChangeKey()">Update Key</button>
