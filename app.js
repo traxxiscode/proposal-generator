@@ -1459,6 +1459,14 @@ window.saveAgreementOnly = async function() {
   toast(editingRecordType === 'Agreement' ? 'Agreement updated' : 'Agreement saved');
 };
 
+window.saveQuoteRecord = async function() {
+  if (!isAdmin) { toast('Admin sign-in required to save documents', true); return; }
+  saveProposalRecord('Proposal');
+  saveProposalRecord('Agreement');
+  await saveProposalHistory();
+  toast('Proposal and agreement saved');
+};
+
 // ============================================================
 // MODAL CLOSE ON BACKDROP
 // ============================================================
