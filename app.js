@@ -859,9 +859,41 @@ var C = {
   muted:  [120, 135, 158],
   text:   [25, 38, 58]
 };
+var PDF_LOGO_LIGHT_URL = 'https://cdn.baseline.is/static/content/logos/VpXJH6gs4Xy6HhRNbzgkmM-lala.svg';
+var PDF_LOGO_DARK_URL = 'https://cdn.baseline.is/static/content/logos/mDtvptChQ3XwBLuxuu5hip-lala.svg';
+var pdfLogoCache = {};
 function setFill(doc, rgb) { doc.setFillColor(rgb[0], rgb[1], rgb[2]); }
 function setStroke(doc, rgb) { doc.setDrawColor(rgb[0], rgb[1], rgb[2]); }
 function setTxt(doc, rgb) { doc.setTextColor(rgb[0], rgb[1], rgb[2]); }
+
+function loadImageAsDataUrl(url) {
+  return new Promise(function(resolve) {
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch(e) {
+        resolve(null);
+      }
+    };
+    img.onerror = function() { resolve(null); };
+    img.src = url;
+  });
+}
+
+async function getPdfLogoData(mode) {
+  var key = mode === 'light' ? 'light' : 'dark';
+  if (pdfLogoCache[key] !== undefined) return pdfLogoCache[key];
+  var url = key === 'light' ? PDF_LOGO_LIGHT_URL : PDF_LOGO_DARK_URL;
+  pdfLogoCache[key] = await loadImageAsDataUrl(url);
+  return pdfLogoCache[key];
+}
 
 function drawPdfLogo(doc, x, y, scale) {
   scale = scale || 1;
@@ -906,12 +938,17 @@ function checkPageBreak(doc, y, needed, H, M) {
   if (y + needed > H - 46) { doc.addPage(); return 54; }
   return y;
 }
-function addPdfPageHeader(doc, opts) {
+async function addPdfPageHeader(doc, opts) {
   var W = opts.W, title = opts.title, subtitle = opts.subtitle || '', rightLines = opts.rightLines || [], M = opts.M || 42;
   setFill(doc, C.dark); doc.rect(0, 0, W, 88, 'F');
   setFill(doc, C.orange); doc.rect(0, 84, W, 4, 'F');
   setFill(doc, C.blue); doc.rect(0, 88, W, 2, 'F');
-  drawPdfLogo(doc, M, 24, 1.08);
+  var logoData = await getPdfLogoData('dark');
+  if (logoData) {
+    doc.addImage(logoData, 'PNG', M, 24, 168, 34);
+  } else {
+    drawPdfLogo(doc, M, 24, 1.08);
+  }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(12); setTxt(doc, C.white);
   doc.text(title, W - M, 34, {align:'right'});
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); setTxt(doc, [198, 210, 228]);
@@ -940,16 +977,16 @@ function addPdfInfoGrid(doc, startY, leftItems, rightItems, layout) {
 }
 function addPdfSummaryCard(doc, d, opts) {
   var x = opts.x, y = opts.y, w = opts.w;
-  setFill(doc, C.dark); doc.roundedRect(x, y, w, 118, 8, 8, 'F');
-  setFill(doc, C.orange); doc.roundedRect(x, y, 5, 118, 3, 3, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); setTxt(doc, C.white);
+  setFill(doc, [246, 249, 253]); doc.roundedRect(x, y, w, 126, 8, 8, 'F');
+  setFill(doc, C.orange); doc.roundedRect(x, y, 5, 126, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); setTxt(doc, C.mid);
   doc.text('PRICING SUMMARY', x + 16, y + 18);
   function row(label, value, yy, color, bold) {
     doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? 10 : 8.5);
-    setTxt(doc, [210, 221, 238]);
+    setTxt(doc, [86, 102, 126]);
     doc.text(label, x + 16, yy);
-    doc.setTextColor.apply(doc, color || [232, 239, 249]);
+    doc.setTextColor.apply(doc, color || C.text);
     doc.text(value, x + w - 14, yy, {align:'right'});
   }
   row('Equipment Subtotal', fmt(d.equipSub), y + 38);
@@ -957,18 +994,18 @@ function addPdfSummaryCard(doc, d, opts) {
   row('Deposit (2 months)', fmt(d.deposit), y + 70);
   setStroke(doc, [50, 72, 108]); doc.setLineWidth(0.5); doc.line(x + 16, y + 78, x + w - 14, y + 78);
   row('TOTAL DUE', fmt(d.total), y + 94, C.orange, true);
-  row('Monthly Total', fmt(d.monthly) + '/mo', y + 108, C.blue, true);
-  return y + 130;
+  row('Monthly Total', fmt(d.monthly) + '/mo', y + 110, C.blue, true);
+  return y + 138;
 }
 // ============================================================
 // PROPOSAL PDF - works from either live form data or saved record
 // ============================================================
-function generateProposalFromData(d) {
+async function generateProposalFromData(d) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
   var W = 612, H = 792, M = 42;
   var today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  addPdfPageHeader(doc, {
+  await addPdfPageHeader(doc, {
     W: W,
     M: M,
     title: 'COMMERCIAL SALES AND SERVICE PROPOSAL',
@@ -1055,18 +1092,18 @@ function generateProposalFromData(d) {
     }
     y += d.usedMin ? 40 : 32;
   }
-  var summaryY = y + 6;
+  y = checkPageBreak(doc, y, d.notes ? 210 : 160, H, M);
   if (d.notes) {
-    y = checkPageBreak(doc, y, 170, H, M);
-    summaryY = y + 6;
-    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); setTxt(doc, C.mid);
-    doc.text('NOTES', M, summaryY + 14);
+    secHdr('NOTES / INTERNAL DETAILS', C.blue);
+    setFill(doc, [248, 250, 253]); doc.roundedRect(M, y, W - (M * 2), 86, 8, 8, 'F');
     doc.setFont('helvetica','normal'); doc.setFontSize(8.5); setTxt(doc, [85,100,120]);
-    doc.text(doc.splitTextToSize(d.notes, 280), M, summaryY + 30);
+    doc.text(doc.splitTextToSize(d.notes, W - (M * 2) - 22), M + 10, y + 18);
+    y += 98;
   }
-  addPdfSummaryCard(doc, d, {x: W - M - 224, y: summaryY, w: 224});
+  y = checkPageBreak(doc, y, 150, H, M);
+  addPdfSummaryCard(doc, d, {x: M, y: y, w: W - (M * 2)});
   doc.setFont('helvetica','normal'); doc.setFontSize(7.2); setTxt(doc, [60,80,115]);
-  doc.text('Contract: ' + d.termLabel + ' | ' + d.orderLabel, W - M - 210, summaryY + 142);
+  doc.text('Contract: ' + d.termLabel + ' | ' + d.orderLabel, M + 16, y + 152);
   addPdfFooter(doc, W, H, M);
   doc.save((d.company||'Proposal').replace(/[^a-z0-9]/gi,'_')+'_Proposal.pdf');
   toast('Proposal PDF downloaded!');
@@ -1079,12 +1116,12 @@ window.generateProposal = function() {
 // ============================================================
 // AGREEMENT PDF - works from either live form data or saved record
 // ============================================================
-function generateAgreementFromData(d) {
+async function generateAgreementFromData(d) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({orientation:'portrait', unit:'pt', format:'letter'});
   var W = 612, H = 792, M = 38;
   var today = new Date().toLocaleDateString('en-US');
-  addPdfPageHeader(doc, {
+  await addPdfPageHeader(doc, {
     W: W,
     M: M,
     title: 'COMMERCIAL SALES AND SERVICE AGREEMENT',
@@ -1174,12 +1211,14 @@ function generateAgreementFromData(d) {
   y += 30;
   doc.line(M, y, W-M, y); y += 7;
   aSecHdr('AGREEMENT DETAILS / NOTES');
-  var notesStartY = y + 2;
   if (d.notes) {
+    setFill(doc, [248, 250, 253]); doc.roundedRect(M, y + 4, W - (M * 2), 80, 8, 8, 'F');
     doc.setFont('helvetica','normal'); doc.setFontSize(8); setTxt(doc, [85,100,120]);
-    doc.text(doc.splitTextToSize(d.notes, W/2-M-20), M+4, notesStartY+10);
+    doc.text(doc.splitTextToSize(d.notes, W - (M * 2) - 20), M+10, y+22);
+    y += 92;
   }
-  var ttx = W/2+8, ttw = W-M-ttx;
+  y = checkPageBreak(doc, y, 190, H, M);
+  var ttx = M, ttw = W - (M * 2);
   function agTotRow(lbl, val, big, vc) {
     setFill(doc, big ? [236,244,255] : [244,249,255]); doc.rect(ttx, y, ttw, 18, 'F');
     setStroke(doc, [215,226,242]); doc.line(ttx, y+18, ttx+ttw, y+18);
@@ -1195,9 +1234,8 @@ function generateAgreementFromData(d) {
   agTotRow('TOTAL AMOUNT DUE', fmt(d.total), true, [10,60,140]);
   agTotRow('DOWN PAYMENT', '$0.00');
   agTotRow('BALANCE DUE', fmt(d.total), true, C.text);
-  y = Math.max(y, notesStartY + (d.notes ? doc.splitTextToSize(d.notes, W/2-M-20).length * 10 + 18 : 0));
   y += 10;
-  y = checkPageBreak(doc, y, 160, H, M);
+  y = checkPageBreak(doc, y, 205, H, M);
   setFill(doc, [255,252,242]); doc.rect(M, y, W-2*M, 17, 'F');
   setFill(doc, C.orange); doc.rect(M, y, 3, 17, 'F');
   doc.setFont('helvetica','italic'); doc.setFontSize(6.5); setTxt(doc, [120,100,70]);
@@ -1214,29 +1252,27 @@ function generateAgreementFromData(d) {
     doc.text(lbl+':', x, yy);
     if (val) { doc.setFont('helvetica','normal'); doc.setFontSize(8.5); setTxt(doc, C.text); doc.text(val, x, yy+11); }
   }
-  var s1 = y + 4;
-  var cw = (W-2*M)/4;
-  sigLine('CUSTOMER', d.company, M, s1, cw-8);
-  sigLine('PROCESSED BY', 'TRAXXIS GPS SOLUTIONS', M+cw, s1, cw-8);
-  sigLine('METRO / REGION', d.metro, M+cw*2, s1, cw-8);
-  sigLine('TRAXXIS REP', d.rep, M+cw*3, s1, cw-8);
   var hw = (W-2*M)/2-10;
-  var s2 = s1+26;
+  var s1 = y + 6;
+  sigLine('CUSTOMER', d.company, M, s1, hw);
+  sigLine('TRAXXIS REP', d.rep, M+hw+20, s1, hw);
+  var s2 = s1+28;
   sigLine('ACCEPTED BY (SIGNATURE)', '', M, s2, hw);
-  sigLine('DATE', '', M+hw+14, s2, hw);
-  var s3 = s2+26;
+  sigLine('REP (SIGNATURE)', '', M+hw+20, s2, hw);
+  var s3 = s2+28;
   sigLine('NAME (PRINT)', d.contact, M, s3, hw);
-  sigLine('TITLE', d.title, M+hw+14, s3, hw);
-  var s4 = s3+26;
-  sigLine('REP (SIGNATURE)', '', M, s4, hw);
-  sigLine('DATE', today, M+hw+14, s4, hw);
+  sigLine('TITLE', d.title, M+hw+20, s3, hw);
+  var s4 = s3+28;
+  sigLine('DATE', '', M, s4, hw);
+  sigLine('DATE', today, M+hw+20, s4, hw);
   doc.addPage();
-  setFill(doc, C.dark); doc.rect(0, 0, W, 42, 'F');
-  setFill(doc, C.orange); doc.rect(0, 39, W, 4, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(10); setTxt(doc, C.white);
-  doc.text('TRAXXIS GPS SOLUTIONS - COMMERCIAL SALES AND SERVICE AGREEMENT', W/2, 22, {align:'center'});
-  doc.setFontSize(8); setTxt(doc, [150,190,240]);
-  doc.text('TERMS AND CONDITIONS', W/2, 34, {align:'center'});
+  await addPdfPageHeader(doc, {
+    W: W,
+    M: M,
+    title: 'COMMERCIAL SALES AND SERVICE AGREEMENT',
+    subtitle: 'TERMS AND CONDITIONS',
+    rightLines: ['Traxxis GPS Solutions', 'Orange and blue branded agreement']
+  });
   var terms = [
     {h:true,t:'1. TERMS AND CONDITIONS'},
     {h:false,t:'These Terms and Conditions are incorporated into the Traxxis GPS Solutions, Inc. Commercial Sales and Service Agreement. Traxxis GPS retains title to all Products until paid in full. Customer may cancel within 30 days of signing, subject to a 30% restocking fee.'},
@@ -1259,7 +1295,7 @@ function generateAgreementFromData(d) {
     {h:true,t:'CONTACT'},
     {h:false,t:'Phone: 888.447.7059 | Email: support@traxxisgps.com | 114 East Main Street, Suite 201, Rock Hill, SC 29730'}
   ];
-  var ty = 56;
+  var ty = 108;
   for (var t=0; t<terms.length; t++) {
     if (ty > H-48) { doc.addPage(); ty = 42; }
     var item = terms[t];
