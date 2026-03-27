@@ -1,36 +1,27 @@
+
 // ============================================================
-// FIREBASE CONFIGURATION & INITIALIZATION
+// API CONFIGURATION
 // ============================================================
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+const API_BASE = '/api';
+var bootstrapData = null;
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBNEgyzigOZG9yyLUt5bPJajSAGivbdtyg",
-  authDomain: "proposal-generator-154a7.firebaseapp.com",
-  projectId: "proposal-generator-154a7",
-  storageBucket: "proposal-generator-154a7.firebasestorage.app",
-  messagingSenderId: "152677372244",
-  appId: "1:152677372244:web:a1eb75b7f8583bc2f438c1"
-};
+async function apiRequest(path, options) {
+  var response = await fetch(API_BASE + path, Object.assign({
+    headers: { 'Content-Type': 'application/json' }
+  }, options || {}));
+  var payload = await response.json().catch(function() { return null; });
+  if (!response.ok || !payload || payload.ok === false) {
+    var message = payload && payload.error ? payload.error : 'Request failed';
+    throw new Error(message);
+  }
+  return payload;
+}
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-
-// Sign in anonymously so Firestore rules (auth != null) are satisfied.
-// This runs once at startup before any Firestore reads/writes.
-const authReadyPromise = signInAnonymously(auth).catch(function(e) {
-  console.error('[Firebase Auth] Anonymous sign-in failed:', e.code, e.message);
-  return null;
-});
-
-// Firestore document paths
-const COLLECTION = 'proposal_generator';
-const CATALOG_DOC   = 'catalog';
-const PLANS_DOC     = 'plans';
-const PROPOSALS_COL = 'proposals'; // sub-collection, one doc per proposal
-const ADMIN_DOC     = 'admin_auth'; // stores {hash, salt}
+async function loadBootstrapData(forceRefresh) {
+  if (bootstrapData && !forceRefresh) return bootstrapData;
+  bootstrapData = await apiRequest('/bootstrap');
+  return bootstrapData;
+}
 
 // ============================================================
 // STATE
@@ -52,7 +43,7 @@ var DEFAULT_CATALOG = [
   {id:6,sku:'GO9-PLUS',desc:'GO9 Plus 4G Device with Advanced Features',category:'GPS Device',price:199.00,price3yr:179.00,active:true}
 ];
 var DEFAULT_PLANS = [
-  {id:1,name:'Geotab GO Plan',desc:'Full telematics – live tracking, engine data, reports',rate:29.99},
+  {id:1,name:'Geotab GO Plan',desc:'Full telematics - live tracking, engine data, reports',rate:29.99},
   {id:2,name:'Geotab GO Focus Plus Video Plan',desc:'AI dash cam plan with video streaming & events',rate:29.99},
   {id:3,name:'Geotab GO ProPlus Plan',desc:'Enhanced features + hours of service + integrations',rate:39.99},
   {id:4,name:'Asset Tracking Plan',desc:'Non-powered asset tracking (trailers, equipment)',rate:9.99}
@@ -93,65 +84,42 @@ function normalizeProposalHistoryRecords(items) {
 }
 
 // ============================================================
-// CRYPTO HELPERS — Web Crypto API (SHA-256 + random salt)
-// ============================================================
-async function generateSalt() {
-  var arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-}
-
-async function hashKey(key, salt) {
-  var enc = new TextEncoder();
-  var data = enc.encode(salt + key);
-  var hashBuf = await crypto.subtle.digest('SHA-256', data);
-  var hashArr = Array.from(new Uint8Array(hashBuf));
-  return hashArr.map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-}
-
-// ============================================================
-// AUTH — Admin Key System
+// AUTH - Admin Key System
 // ============================================================
 async function checkAdminSetup() {
   try {
-    console.log('[checkAdminSetup] Checking doc:', COLLECTION + '/' + ADMIN_DOC);
-    var snap = await getDoc(doc(db, COLLECTION, ADMIN_DOC));
-    console.log('[checkAdminSetup] Doc exists:', snap.exists());
-    return snap.exists();
-  } catch(e) {
-    console.error('[checkAdminSetup] ERROR reading admin doc:', e);
-    console.error('[checkAdminSetup] Error code:', e.code, '| message:', e.message);
+    var data = await loadBootstrapData();
+    return !!data.has_admin;
+  } catch (e) {
+    console.error('[checkAdminSetup] Error checking admin setup:', e);
     return false;
   }
 }
 
 async function createAdminKey(key) {
-  console.log('[createAdminKey] Starting. COLLECTION:', COLLECTION, '| ADMIN_DOC:', ADMIN_DOC);
-  var salt = await generateSalt();
-  console.log('[createAdminKey] Salt generated OK');
-  var hash = await hashKey(key, salt);
-  console.log('[createAdminKey] Hash generated OK (first 8):', hash.slice(0, 8));
-  var docRef = doc(db, COLLECTION, ADMIN_DOC);
-  console.log('[createAdminKey] Doc path:', docRef.path, '| Attempting setDoc...');
-  await setDoc(docRef, { hash: hash, salt: salt });
-  console.log('[createAdminKey] setDoc SUCCESS');
+  await apiRequest('/admin/setup', {
+    method: 'POST',
+    body: JSON.stringify({ key: key })
+  });
+  if (bootstrapData) bootstrapData.has_admin = true;
 }
 
 async function verifyAdminKey(key) {
   try {
-    var snap = await getDoc(doc(db, COLLECTION, ADMIN_DOC));
-    if (!snap.exists()) return false;
-    var data = snap.data();
-    var hash = await hashKey(key, data.salt);
-    return hash === data.hash;
-  } catch(e) { return false; }
+    var data = await apiRequest('/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ key: key })
+    });
+    return !!data.authenticated;
+  } catch (e) {
+    return false;
+  }
 }
 
 // ============================================================
 // AUTH UI
 // ============================================================
 async function initAuth() {
-  await authReadyPromise;
   var hasAdmin = await checkAdminSetup();
   document.getElementById('auth-loading-panel').style.display = 'none';
   if (!hasAdmin) {
@@ -172,14 +140,10 @@ window.handleSetupKey = async function() {
   if (key.length < 6) { err.textContent = 'Admin key must be at least 6 characters.'; err.style.display = 'block'; return; }
   if (key !== key2) { err.textContent = 'Keys do not match.'; err.style.display = 'block'; return; }
   try {
-    console.log('[handleSetupKey] Calling createAdminKey...');
     await createAdminKey(key);
-    console.log('[handleSetupKey] createAdminKey resolved, booting as admin...');
     bootAsAdmin();
   } catch(e) {
-    console.error('[handleSetupKey] CAUGHT ERROR:', e);
-    console.error('[handleSetupKey] Error code:', e.code);
-    console.error('[handleSetupKey] Error message:', e.message);
+    console.error('[handleSetupKey] Error creating admin key:', e);
     err.textContent = 'Error saving admin key. Check connection.'; err.style.display = 'block';
   }
 };
@@ -220,17 +184,13 @@ async function bootAsGuest() {
 }
 
 function updateAdminUI() {
-  // Topbar badges
   document.getElementById('admin-mode-badge').style.display = isAdmin ? 'inline-flex' : 'none';
   document.getElementById('guest-mode-badge').style.display = !isAdmin ? 'inline-flex' : 'none';
-
-  // Admin-gated pages
   document.getElementById('admin-only-msg').style.display = isAdmin ? 'none' : 'block';
   document.getElementById('admin-content').style.display = isAdmin ? 'block' : 'none';
   document.getElementById('history-admin-only-msg').style.display = isAdmin ? 'none' : 'block';
   document.getElementById('history-content').style.display = isAdmin ? 'block' : 'none';
 
-  // Status bar
   var statusEl = document.getElementById('mode-status-text');
   if (statusEl) {
     if (isAdmin) {
@@ -291,11 +251,17 @@ window.handleChangeKey = async function() {
   if (!cur || !nw) { err.textContent = 'Fill in all fields.'; err.style.display = 'block'; return; }
   if (nw !== nw2) { err.textContent = 'New keys do not match.'; err.style.display = 'block'; return; }
   if (nw.length < 6) { err.textContent = 'New key must be at least 6 characters.'; err.style.display = 'block'; return; }
-  var ok = await verifyAdminKey(cur);
-  if (!ok) { err.textContent = 'Current admin key is incorrect.'; err.style.display = 'block'; return; }
-  await createAdminKey(nw);
-  suc.textContent = 'Admin key updated successfully.'; suc.style.display = 'block';
-  setTimeout(function(){ closeModal('modal-change-key'); }, 1500);
+  try {
+    await apiRequest('/admin/key', {
+      method: 'PUT',
+      body: JSON.stringify({ current_key: cur, new_key: nw })
+    });
+    suc.textContent = 'Admin key updated successfully.'; suc.style.display = 'block';
+    setTimeout(function(){ closeModal('modal-change-key'); }, 1500);
+  } catch (e) {
+    err.textContent = e.message || 'Unable to update admin key.';
+    err.style.display = 'block';
+  }
 };
 
 function hideAuthOverlay() {
@@ -304,18 +270,18 @@ function hideAuthOverlay() {
 }
 
 // ============================================================
-// FIREBASE DATA OPERATIONS
+// API DATA OPERATIONS
 // ============================================================
 async function loadData(adminMode) {
   try {
-    var catSnap = await getDoc(doc(db, COLLECTION, CATALOG_DOC));
-    catalog = catSnap.exists() ? catSnap.data().items : JSON.parse(JSON.stringify(DEFAULT_CATALOG));
-  } catch(e) { catalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG)); }
-
-  try {
-    var plansSnap = await getDoc(doc(db, COLLECTION, PLANS_DOC));
-    plans = plansSnap.exists() ? plansSnap.data().items : JSON.parse(JSON.stringify(DEFAULT_PLANS));
-  } catch(e) { plans = JSON.parse(JSON.stringify(DEFAULT_PLANS)); }
+    var data = await loadBootstrapData(true);
+    catalog = Array.isArray(data.catalog) ? data.catalog : JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+    plans = Array.isArray(data.plans) ? data.plans : JSON.parse(JSON.stringify(DEFAULT_PLANS));
+  } catch(e) {
+    console.error('Error loading bootstrap data:', e);
+    catalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+    plans = JSON.parse(JSON.stringify(DEFAULT_PLANS));
+  }
 
   if (adminMode) {
     await loadProposals();
@@ -324,25 +290,44 @@ async function loadData(adminMode) {
 
 async function loadProposals() {
   try {
-    var snap = await getDoc(doc(db, COLLECTION, 'proposals_list'));
-    proposalHistory = snap.exists() ? normalizeProposalHistoryRecords(snap.data().items || []) : [];
+    var data = await apiRequest('/proposals');
+    proposalHistory = normalizeProposalHistoryRecords(data.items || []);
     autoPurgeProposals();
-  } catch(e) { proposalHistory = []; }
+  } catch(e) {
+    console.error('Error loading proposals:', e);
+    proposalHistory = [];
+  }
 }
 
 async function saveData() {
   try {
-    await setDoc(doc(db, COLLECTION, CATALOG_DOC), { items: catalog });
-    await setDoc(doc(db, COLLECTION, PLANS_DOC), { items: plans });
-  } catch(e) { console.error('Error saving catalog/plans:', e); toast('Save failed — check connection', true); }
+    await Promise.all([
+      apiRequest('/catalog', { method: 'PUT', body: JSON.stringify({ items: catalog }) }),
+      apiRequest('/plans', { method: 'PUT', body: JSON.stringify({ items: plans }) })
+    ]);
+    if (bootstrapData) {
+      bootstrapData.catalog = catalog;
+      bootstrapData.plans = plans;
+    }
+  } catch(e) {
+    console.error('Error saving catalog/plans:', e);
+    toast('Save failed - check connection', true);
+  }
 }
 
 async function saveProposalHistory() {
   try {
     if (proposalHistory.length > 500) proposalHistory = proposalHistory.slice(0, 500);
     proposalHistory = normalizeProposalHistoryRecords(proposalHistory);
-    await setDoc(doc(db, COLLECTION, 'proposals_list'), { items: proposalHistory });
-  } catch(e) { console.error('Error saving proposals:', e); toast('Save failed', true); }
+    var data = await apiRequest('/proposals', {
+      method: 'PUT',
+      body: JSON.stringify({ items: proposalHistory })
+    });
+    proposalHistory = normalizeProposalHistoryRecords(data.items || proposalHistory);
+  } catch(e) {
+    console.error('Error saving proposals:', e);
+    toast('Save failed', true);
+  }
 }
 
 function autoPurgeProposals() {
