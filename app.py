@@ -6,6 +6,8 @@ import os
 import secrets
 import time
 from pathlib import Path
+from decimal import Decimal
+from dotenv import load_dotenv
 
 try:
     import boto3
@@ -16,6 +18,7 @@ except ImportError:
 
 
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / '.env')
 DEFAULT_DATA_FILE = BASE_DIR / 'data' / 'proposal_generator.json'
 DEFAULT_CATALOG = [
     {'id': 1, 'sku': 'GO9-LTE', 'desc': 'GO9 LTE/4G Model GPS Device', 'category': 'GPS Device', 'price': 149.00, 'price3yr': 149.00, 'active': True},
@@ -36,6 +39,25 @@ DEFAULT_PLANS = [
 class RepositoryError(Exception):
     pass
 
+
+def to_dynamo_compatible(value):
+    if isinstance(value, dict):
+        return {key: to_dynamo_compatible(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [to_dynamo_compatible(item) for item in value]
+    if isinstance(value, float):
+        return Decimal(str(value))
+    return value
+
+
+def from_dynamo_compatible(value):
+    if isinstance(value, dict):
+        return {key: from_dynamo_compatible(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [from_dynamo_compatible(item) for item in value]
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    return value
 
 class LocalRepository:
     def __init__(self, data_file):
@@ -109,13 +131,15 @@ class DynamoRepository:
     def _get_item(self, key):
         try:
             response = self.table.get_item(Key={'pk': key})
-            return response.get('Item')
+            item = response.get('Item')
+            return from_dynamo_compatible(item) if item else None
         except (BotoCoreError, ClientError) as exc:
             raise RepositoryError(str(exc)) from exc
 
     def _put_item(self, key, value):
         try:
-            self.table.put_item(Item={'pk': key, 'value': value})
+            dynamo_value = to_dynamo_compatible(value)
+            self.table.put_item(Item={'pk': key, 'value': dynamo_value})
             return value
         except (BotoCoreError, ClientError) as exc:
             raise RepositoryError(str(exc)) from exc
@@ -345,3 +369,4 @@ def static_proxy(path):
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+
